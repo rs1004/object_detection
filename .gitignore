@@ -1,0 +1,7 @@
+DEV
+.vscode
+*egg-info
+__pycache__
+
+data
+result
