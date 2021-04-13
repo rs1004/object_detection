@@ -2,6 +2,10 @@ from torch.utils.data import Dataset
 from PIL import Image
 from pathlib import Path
 import torch
+try:
+    from .transform import DataTransform
+except ImportError:
+    from transform import DataTransform
 
 
 class DetectionDataset(Dataset):
@@ -11,14 +15,19 @@ class DetectionDataset(Dataset):
         input_size (int): モデルへの画像の入力サイズ (データ拡張で使用)
         phase (str): 'train' or 'val'
     Returns:
-        (image, label): image: torch.Tensor (3, input_size, input_size)
-                        label: torch.Tensor (k, [class_id, x, y, w, h])
+        (image, label): image: torch.tensor (3, input_size, input_size)
+                        label: torch.tensor (k, [class_id, x, y, w, h])
     """
 
     def __init__(self, data_dir: str, input_size: int, phase: str = 'train'):
         super(DetectionDataset, self).__init__()
         self.data_list = self._get_data_list(data_dir, phase)
-        self.transform = None
+        self.transform = DataTransform(
+            input_size=input_size,
+            mean=(0.485, 0.456, 0.406),
+            std=(0.229, 0.224, 0.225),
+            phase=phase
+        )
 
     def __len__(self):
         return len(self.data_list)
@@ -31,11 +40,10 @@ class DetectionDataset(Dataset):
 
         # read label
         with open(label_path, 'r') as f:
-            label = torch.Tensor([self._parse(line) for line in f.read().split('\n')])
+            label = torch.tensor([self._parse(line) for line in f.read().split('\n')])
 
         # augmentation
-        if self.transform is not None:
-            image, label = self.transform((image, label))
+        image, label = self.transform(image, label)
 
         return image, label
 
