@@ -51,10 +51,10 @@ for t in ['train', 'val']:
 
         labels = ['{} {} {} {} {}'.format(
             data.index(obj.find('name').text),
-            int(obj.find('bndbox').find('xmin').text) / width,
-            int(obj.find('bndbox').find('ymin').text) / height,
-            (int(obj.find('bndbox').find('xmax').text) - int(obj.find('bndbox').find('xmin').text)) / width,
-            (int(obj.find('bndbox').find('ymax').text) - int(obj.find('bndbox').find('ymin').text)) / height
+            (int(obj.find('bndbox').find('xmin').text) - 1) / width,
+            (int(obj.find('bndbox').find('ymin').text) - 1) / height,
+            (int(obj.find('bndbox').find('xmax').text) - 1) / width,
+            (int(obj.find('bndbox').find('ymax').text) - 1) / height
         ) for obj in root.iter('object')]
 
         with open(label_dst_dir / (file_name + '.txt'), 'w') as f:
