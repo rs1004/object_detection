@@ -23,19 +23,19 @@ class DataTransform:
                 A.RandomMirror(p=p),
                 A.RandomRotate(degree=5.0, p=p),
                 A.ToTensor(),
-                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                A.Normalize(mean, std)
             ])
         elif phase == 'val':
             self.data_transform = A.Compose([
                 A.Resize(input_size=(input_size, input_size)),
                 A.ToTensor(),
-                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                A.Normalize(mean, std)
             ])
         else:
             raise NotImplementedError(f'phase "{phase}" is invalid')
 
-    def __call__(self, image, label):
-        return self.data_transform(image, label)
+    def __call__(self, image, label, bbox):
+        return self.data_transform(image, label, bbox)
 
 
 if __name__ == '__main__':
@@ -44,10 +44,10 @@ if __name__ == '__main__':
 
     size = 300
     ds = DetectionDataset('/home/sato/work/object_detection/data/voc', input_size=size, phase='train')
-    image, label = ds.__getitem__(0)
+    image, label, bbox = ds.__getitem__(0)
     image = Image.fromarray((image.permute(1, 2, 0) * 255).numpy().astype('uint8'))
     draw = ImageDraw.Draw(image)
-    for _, x, y, w, h in label:
-        draw.rectangle((int(x * size), int(y * size), int((x + w) * size), int((y + h) * size)), outline=(255, 255, 255), width=3)
+    for xmin, ymin, xmax, ymax in bbox:
+        draw.rectangle((int(xmin * size), int(ymin * size), int(xmax * size), int(ymax * size)), outline=(255, 255, 255), width=3)
 
     image.save('a.png')

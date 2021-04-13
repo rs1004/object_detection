@@ -1,4 +1,5 @@
 from torch.utils.data import Dataset
+from torchvision.ops import box_convert
 from PIL import Image
 from pathlib import Path
 import torch
@@ -19,9 +20,10 @@ class DetectionDataset(Dataset):
                         label: torch.tensor (k, [class_id, x, y, w, h])
     """
 
-    def __init__(self, data_dir: str, input_size: int, phase: str = 'train'):
+    def __init__(self, data_dir: str, input_size: int, fmt: str = 'xyxy', phase: str = 'train'):
         super(DetectionDataset, self).__init__()
         self.data_list = self._get_data_list(data_dir, phase)
+        self.fmt = fmt
         self.transform = DataTransform(
             input_size=input_size,
             mean=(0.485, 0.456, 0.406),
@@ -40,12 +42,14 @@ class DetectionDataset(Dataset):
 
         # read label
         with open(label_path, 'r') as f:
-            label = torch.tensor([self._parse(line) for line in f.read().split('\n')])
+            data = torch.tensor([self._parse(line) for line in f.read().split('\n')])
+            label, bbox = data[:, 0:1].long(), data[:, 1:]
 
-        # augmentation
-        image, label = self.transform(image, label)
+        # transform
+        image, label, bbox = self.transform(image, label, bbox)
+        bbox = box_convert(bbox, in_fmt='xyxy', out_fmt=self.fmt)
 
-        return image, label
+        return image, label, bbox
 
     def _get_data_list(self, data_dir: str, phase: str) -> list:
         data_dir = Path(data_dir) / phase
@@ -64,6 +68,7 @@ class DetectionDataset(Dataset):
 
 if __name__ == '__main__':
     ds = DetectionDataset('/home/sato/work/object_detection/data/voc', 100)
-    image, label = ds.__getitem__(0)
+    image, label, bbox = ds.__getitem__(0)
     print(image)
     print(label)
+    print(bbox)
