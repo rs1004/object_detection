@@ -1,5 +1,6 @@
 import torch
 import torchvision.transforms as T
+from torchvision.ops import box_area
 
 
 class Compose:
@@ -37,7 +38,7 @@ class Resize:
 
 
 class RandomRotate:
-    def __init__(self, degree, p=0.5):
+    def __init__(self, degree=5.0, p=0.5):
         self.degree = self._get_uniformally(degree)
         self.p = p
 
@@ -68,6 +69,29 @@ class RandomRotate:
         ])
 
         return torch.mm(rot_mat, p)
+
+
+class RandomSampleCrop:
+    def __init__(self, p=0.5, upper_ratio=0.1, reduction_thresh=0.8):
+        self.p = p
+        self.upper_ratio = upper_ratio
+        self.reduction_thresh = reduction_thresh
+
+    def __call__(self, image, label, bbox):
+        if torch.rand(1) < self.p:
+            cropped_corner = torch.rand(4) * self.upper_ratio
+            cropped_corner[2:] = 1 - cropped_corner[2:]
+            intersect = torch.cat(
+                [torch.max(cropped_corner[0:2], bbox[:, 0:2]),
+                 torch.min(cropped_corner[2:4], bbox[:, 2:4])],
+                dim=1)
+            if (box_area(intersect) / (box_area(bbox) + 1e-10) > self.reduction_thresh).all():
+                W, H = image.size
+                xmin, ymin, xmax, ymax = (cropped_corner * torch.tensor([W, H, W, H]))
+                image = T.functional.crop(image, int(ymin), int(xmin), int(ymax - ymin), int(xmax - xmin))
+                bbox = (bbox - cropped_corner[0:2].repeat(2)) / (cropped_corner[2:4].repeat(2) - cropped_corner[0:2].repeat(2))
+
+        return image, label, bbox
 
 
 class RandomMirror:

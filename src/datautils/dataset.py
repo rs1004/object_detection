@@ -16,8 +16,9 @@ class DetectionDataset(Dataset):
         input_size (int): モデルへの画像の入力サイズ (データ拡張で使用)
         phase (str): 'train' or 'val'
     Returns:
-        (image, label): image: torch.tensor (3, input_size, input_size)
-                        label: torch.tensor (k, [class_id, x, y, w, h])
+        (image, label, bbox): image: torch.tensor (3, input_size, input_size)
+                              label: torch.tensor (k, 1)
+                              bbox : torch.tensor (k, 4) (fmt: [xmin, ymin, xmax, ymax])
     """
 
     def __init__(self, data_dir: str, input_size: int, fmt: str = 'xyxy', phase: str = 'train'):

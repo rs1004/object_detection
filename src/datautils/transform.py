@@ -19,9 +19,10 @@ class DataTransform:
         if phase == 'train':
             self.data_transform = A.Compose([
                 A.RandomColorJitter(b_ratio=r, c_ratio=r, s_ratio=r, h_ratio=r),
+                A.RandomSampleCrop(p=p),
                 A.Resize(input_size=(input_size, input_size)),
                 A.RandomMirror(p=p),
-                A.RandomRotate(degree=5.0, p=p),
+                A.RandomRotate(p=p),
                 A.ToTensor(),
                 A.Normalize(mean, std)
             ])
