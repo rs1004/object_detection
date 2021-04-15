@@ -14,14 +14,15 @@ class DetectionDataset(Dataset):
     Args:
         data_dir (str): 画像データのディレクトリ
         input_size (int): モデルへの画像の入力サイズ (データ拡張で使用)
+        fmt (str): bbox のフォーマット. 'xyxy' or 'cxcywh'
         phase (str): 'train' or 'val'
     Returns:
         (image, label, bbox): image: torch.tensor (3, input_size, input_size)
                               label: torch.tensor (k, 1)
-                              bbox : torch.tensor (k, 4) (fmt: [xmin, ymin, xmax, ymax])
+                              bbox : torch.tensor (k, 4) (fmt: [cx, cy, w, h])
     """
 
-    def __init__(self, data_dir: str, input_size: int, fmt: str = 'xyxy', phase: str = 'train'):
+    def __init__(self, data_dir: str, input_size: int, fmt: str = 'cxcywh', phase: str = 'train'):
         super(DetectionDataset, self).__init__()
         self.data_list = self._get_data_list(data_dir, phase)
         self.fmt = fmt

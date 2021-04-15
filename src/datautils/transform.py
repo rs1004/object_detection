@@ -44,7 +44,7 @@ if __name__ == '__main__':
     from PIL import Image, ImageDraw
 
     size = 300
-    ds = DetectionDataset('/home/sato/work/object_detection/data/voc', input_size=size, phase='train')
+    ds = DetectionDataset('/home/sato/work/object_detection/data/voc', input_size=size, fmt='xyxy', phase='train')
     image, label, bbox = ds.__getitem__(0)
     image = Image.fromarray((image.permute(1, 2, 0) * 255).numpy().astype('uint8'))
     draw = ImageDraw.Draw(image)
