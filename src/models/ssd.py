@@ -9,11 +9,17 @@ except ImportError:
 
 
 class SSD(nn.Module):
-    def __init__(self, num_classes, pretrained=True):
+    def __init__(self, num_classes, pretrained=True, pretrained_weights=None):
         super(SSD, self).__init__()
         self.nc = num_classes + 1  # add background class
 
-        self.features = self._parse_features(vgg16_bn(pretrained).features[:-1])
+        if pretrained_weights:
+            bb = vgg16_bn(pretrained=False)
+            bb.load_state_dict(torch.load(pretrained_weights))
+        else:
+            bb = vgg16_bn(pretrained=pretrained)
+
+        self.features = self._parse_features(bb.features[:-1])
 
         self.extras = nn.ModuleDict([
             ('conv6_1', ConvBlock(512, 1024, kernel_size=3, padding=1)),
