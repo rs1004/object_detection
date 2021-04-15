@@ -66,22 +66,22 @@ class SSD(nn.Module):
 
     def forward(self, x):
         batch_size = x.size(0)
-        out_l = []
-        out_c = []
+        out_ls = []
+        out_cs = []
         for name, m in self.features.items():
             x = m(x)
             if name in self.localizers:
-                out_l.append(self.localizers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, 4))
-                out_c.append(self.classifiers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, self.nc))
+                out_ls.append(self.localizers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, 4))
+                out_cs.append(self.classifiers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, self.nc))
 
         for name, m in self.extras.items():
             x = m(x)
             if name in self.localizers:
-                out_l.append(self.localizers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, 4))
-                out_c.append(self.classifiers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, self.nc))
+                out_ls.append(self.localizers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, 4))
+                out_cs.append(self.classifiers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, self.nc))
 
-        out_l, out_c = torch.cat(out_l, dim=1), torch.cat(out_c, dim=1)
-        return out_l, out_c
+        out_ls, out_cs = torch.cat(out_ls, dim=1), torch.cat(out_cs, dim=1)
+        return out_ls, out_cs
 
     def _parse_features(self, vgg_features: nn.Sequential) -> nn.ModuleDict:
         """ torchvision の VGG16 モデルの特徴抽出層を ConvBlock にパースする
@@ -147,13 +147,17 @@ class SSD(nn.Module):
         dboxes = torch.tensor(dboxes)
         return dboxes
 
+    def loss(self, out_ls, out_cs, bboxes, labels):
+        # dboxes = self.dboxes.to(bboxes.device)
+        pass
+
 
 if __name__ == '__main__':
     import torch
     x = torch.rand(2, 3, 300, 300)
 
     model = SSD(num_classes=20, pretrained=False)
-    out_l, out_c = model(x)
-    print(out_l.shape, out_c.shape)
+    out_ls, out_cs = model(x)
+    print(out_ls.shape, out_cs.shape)
     for coord in model.dboxes:
         print(coord)

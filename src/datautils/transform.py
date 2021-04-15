@@ -35,8 +35,8 @@ class DataTransform:
         else:
             raise NotImplementedError(f'phase "{phase}" is invalid')
 
-    def __call__(self, image, label, bbox):
-        return self.data_transform(image, label, bbox)
+    def __call__(self, image, bbox, label):
+        return self.data_transform(image, bbox, label)
 
 
 if __name__ == '__main__':
@@ -45,7 +45,7 @@ if __name__ == '__main__':
 
     size = 300
     ds = DetectionDataset('/home/sato/work/object_detection/data/voc', input_size=size, fmt='xyxy', phase='train')
-    image, label, bbox = ds.__getitem__(0)
+    image, bbox, label = ds.__getitem__(0)
     image = Image.fromarray((image.permute(1, 2, 0) * 255).numpy().astype('uint8'))
     draw = ImageDraw.Draw(image)
     for xmin, ymin, xmax, ymax in bbox:

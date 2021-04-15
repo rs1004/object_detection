@@ -7,11 +7,11 @@ class Compose:
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, image, label, bbox):
+    def __call__(self, image, bbox, label):
         for t in self.transforms:
-            image, label, bbox = t(image, label, bbox)
+            image, bbox, label = t(image, bbox, label)
 
-        return image, label, bbox
+        return image, bbox, label
 
 
 class RandomColorJitter:
@@ -23,18 +23,18 @@ class RandomColorJitter:
             hue=h_ratio
         )
 
-    def __call__(self, image, label, bbox):
+    def __call__(self, image, bbox, label):
         image = self.color_jitter(image)
-        return image, label, bbox
+        return image, bbox, label
 
 
 class Resize:
     def __init__(self, input_size):
         self.resize = T.Resize(input_size)
 
-    def __call__(self, image, label, bbox):
+    def __call__(self, image, bbox, label):
         image = self.resize(image)
-        return image, label, bbox
+        return image, bbox, label
 
 
 class RandomRotate:
@@ -45,7 +45,7 @@ class RandomRotate:
     def _get_uniformally(self, x):
         return (torch.rand(1) * 2 - 1) * x
 
-    def __call__(self, image, label, bbox):
+    def __call__(self, image, bbox, label):
         if torch.rand(1) < self.p:
             image = T.functional.rotate(image, float(self.degree), interpolation=T.functional.InterpolationMode.BICUBIC)
             bbox_ = []
@@ -59,7 +59,7 @@ class RandomRotate:
                 bbox_.append([xmin, ymin, xmax, ymax])
             bbox = torch.tensor(bbox_)
 
-        return image, label, bbox
+        return image, bbox, label
 
     def _rotate_p(self, p, degree):
         theta = torch.deg2rad(degree)
@@ -77,7 +77,7 @@ class RandomSampleCrop:
         self.upper_ratio = upper_ratio
         self.reduction_thresh = reduction_thresh
 
-    def __call__(self, image, label, bbox):
+    def __call__(self, image, bbox, label):
         if torch.rand(1) < self.p:
             cropped_corner = torch.rand(4) * self.upper_ratio
             cropped_corner[2:] = 1 - cropped_corner[2:]
@@ -91,34 +91,34 @@ class RandomSampleCrop:
                 image = T.functional.crop(image, int(ymin), int(xmin), int(ymax - ymin), int(xmax - xmin))
                 bbox = (bbox - cropped_corner[0:2].repeat(2)) / (cropped_corner[2:4].repeat(2) - cropped_corner[0:2].repeat(2))
 
-        return image, label, bbox
+        return image, bbox, label
 
 
 class RandomMirror:
     def __init__(self, p=0.5):
         self.p = p
 
-    def __call__(self, image, label, bbox):
+    def __call__(self, image, bbox, label):
         if torch.rand(1) < self.p:
             image = T.functional.hflip(image)
             bbox[:, 0], bbox[:, 2] = 1 - bbox[:, 2], 1 - bbox[:, 0]
 
-        return image, label, bbox
+        return image, bbox, label
 
 
 class ToTensor:
     def __init__(self):
         self.to_tensor = T.ToTensor()
 
-    def __call__(self, image, label, bbox):
+    def __call__(self, image, bbox, label):
         image = self.to_tensor(image)
-        return image, label, bbox
+        return image, bbox, label
 
 
 class Normalize:
     def __init__(self, mean, std):
         self.normalize = T.Normalize(mean=mean, std=std)
 
-    def __call__(self, image, label, bbox):
+    def __call__(self, image, bbox, label):
         image = self.normalize(image)
-        return image, label, bbox
+        return image, bbox, label

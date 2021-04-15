@@ -17,9 +17,9 @@ class DetectionDataset(Dataset):
         fmt (str): bbox のフォーマット. 'xyxy' or 'cxcywh'
         phase (str): 'train' or 'val'
     Returns:
-        (image, label, bbox): image: torch.tensor (3, input_size, input_size)
-                              label: torch.tensor (k, 1)
+        (image, bbox, label): image: torch.tensor (3, input_size, input_size)
                               bbox : torch.tensor (k, 4) (fmt: [cx, cy, w, h])
+                              label: torch.tensor (k,)
     """
 
     def __init__(self, data_dir: str, input_size: int, fmt: str = 'cxcywh', phase: str = 'train'):
@@ -45,13 +45,13 @@ class DetectionDataset(Dataset):
         # read label
         with open(label_path, 'r') as f:
             data = torch.tensor([self._parse(line) for line in f.read().split('\n')])
-            label, bbox = data[:, 0:1].long(), data[:, 1:]
+            label, bbox = data[:, 0].long(), data[:, 1:]
 
         # transform
-        image, label, bbox = self.transform(image, label, bbox)
+        image, bbox, label = self.transform(image, bbox, label)
         bbox = box_convert(bbox, in_fmt='xyxy', out_fmt=self.fmt)
 
-        return image, label, bbox
+        return image, bbox, label
 
     def _get_data_list(self, data_dir: str, phase: str) -> list:
         data_dir = Path(data_dir) / phase
@@ -70,7 +70,7 @@ class DetectionDataset(Dataset):
 
 if __name__ == '__main__':
     ds = DetectionDataset('/home/sato/work/object_detection/data/voc', 100)
-    image, label, bbox = ds.__getitem__(0)
+    image, bbox, label = ds.__getitem__(0)
     print(image)
-    print(label)
     print(bbox)
+    print(label)
