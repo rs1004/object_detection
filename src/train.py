@@ -28,20 +28,20 @@ def chain(loaders: dict) -> tuple:
 # ----------------- パラメータ設定 -----------------
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--work_dir', help='root directory of this repository', default='/home/sato/work/object_detection')
 parser.add_argument('--data_name', help='same as the directory name placed under ./data', default='voc')
 parser.add_argument('--batch_size', help='batch size of loaded data', type=int, default=2)
 parser.add_argument('--input_size', help='input image size to model', type=int, default=300)
-parser.add_argument('--num_classes', help='number of classes to be classified', type=int, default=20)
 parser.add_argument('--epochs', help='number of epochs', type=int, default=50)
 parser.add_argument('--version', help='used for output directory name', default='ssd_voc')
 
 args = parser.parse_args()
 # --------------------------------------------------
 
-data_dir = f'{args.work_dir}/data/{args.data_name}'
-log_dir = f'{args.work_dir}/result/{args.version}/logs'
-weights_dir = Path(f'{args.work_dir}/result/{args.version}/weights')
+data_dir = f'./data/{args.data_name}'
+log_dir = f'./result/{args.version}/logs'
+weights_dir = Path(f'./result/{args.version}/weights')
+with open(Path(data_dir) / 'labels', 'r') as f:
+    num_classes = len(f.read().split('\n'))
 
 # データ生成
 dataloaders = {}
@@ -60,7 +60,7 @@ for phase in ['train', 'val']:
     )
 
 # モデル
-model = SSD(num_classes=args.num_classes)
+model = SSD(num_classes=num_classes)
 
 weights_path = weights_dir / 'latest.pth'
 if weights_path.exists():
@@ -71,11 +71,35 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
 criterion = model.loss
-optimizer = SGD(params=model.get_parameters(), lr=0.001, momentum=0.9, weight_decay=0.005)
+optimizer = SGD(params=model.get_parameters(), lr=0.01, momentum=0.9, weight_decay=0.005)
 scheduler = MultiStepLR(optimizer, milestones=[100, 200])
 
 torch.backends.cudnn.benchmark = True
 
+print(f'''########## TRAINING START ##########
+[CONFIG]
+* version\t: {args.version}
+* batch_size\t: {args.batch_size}
+* epochs\t: {args.epochs}
+
+[DATASET]
+* {args.data_name}
+
+[MODEL]
+* {model.__class__.__name__}{args.input_size}
+
+[OPTIMIZER]
+* {optimizer.__class__.__name__}
+* params : {optimizer.defaults}
+
+[SCHEDULER]
+* {scheduler.__class__.__name__}
+* milestones: {
+    ' -> '.join(
+        f'{round(scheduler.get_last_lr()[0] * pow(scheduler.gamma, i), 5)} ({s} epc~)'
+        for i, s in enumerate(scheduler.milestones.keys(), start=1))}
+####################################
+''')
 min_val_loss = 99999
 with SummaryWriter(log_dir=log_dir) as writer:
     for epoch in range(1, args.epochs + 1):

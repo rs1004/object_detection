@@ -2,7 +2,7 @@ DEV
 .vscode
 *egg-info
 __pycache__
-*.ipynb*
+.ipynb*
 
 data
 result
