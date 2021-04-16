@@ -1,1 +1,1 @@
-from ssd import SSD  # noqa
+from .ssd import SSD  # noqa

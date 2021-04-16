@@ -3,10 +3,7 @@ from torchvision.ops import box_convert
 from PIL import Image
 from pathlib import Path
 import torch
-try:
-    from .transform import DataTransform
-except ImportError:
-    from transform import DataTransform
+from datautils.transform import DataTransform
 
 
 class DetectionDataset(Dataset):
@@ -66,6 +63,18 @@ class DetectionDataset(Dataset):
     def _parse(self, line):
         class_id, x, y, w, h = line.split(' ')
         return int(class_id), float(x), float(y), float(w), float(h)
+
+    def collate_fn(self, batch: tuple):
+        images = []
+        bboxes = []
+        labels = []
+        for image, bbox, label in batch:
+            images.append(image)
+            bboxes.append(bbox)
+            labels.append(label)
+        images = torch.stack(images, dim=0)
+
+        return images, bboxes, labels
 
 
 if __name__ == '__main__':

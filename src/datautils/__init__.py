@@ -1,1 +1,1 @@
-from dataset import DetectionDataset  # noqa
+from .dataset import DetectionDataset  # noqa

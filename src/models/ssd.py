@@ -3,10 +3,7 @@ import torch.nn as nn
 from torchvision.models import vgg16_bn
 from collections import Counter
 from torchvision.ops import box_iou, box_convert
-try:
-    from .layers import ConvBlock, L2Norm
-except ImportError:
-    from layers import ConvBlock, L2Norm
+from models.layers import ConvBlock, L2Norm
 
 
 class SSD(nn.Module):
@@ -39,7 +36,7 @@ class SSD(nn.Module):
             ('conv11_2', ConvBlock(128, 256, kernel_size=3)),
         ])
 
-        self.localizers = {
+        self.localizers = nn.ModuleDict({
             'conv4_3': nn.Sequential(
                 L2Norm(512),
                 nn.Conv2d(in_channels=512, out_channels=4 * 4, kernel_size=3, padding=1)
@@ -49,9 +46,9 @@ class SSD(nn.Module):
             'conv9_2': nn.Conv2d(in_channels=256, out_channels=6 * 4, kernel_size=3, padding=1),
             'conv10_2': nn.Conv2d(in_channels=256, out_channels=4 * 4, kernel_size=3, padding=1),
             'conv11_2': nn.Conv2d(in_channels=256, out_channels=4 * 4, kernel_size=3, padding=1),
-        }
+        })
 
-        self.classifiers = {
+        self.classifiers = nn.ModuleDict({
             'conv4_3': nn.Sequential(
                 L2Norm(512),
                 nn.Conv2d(in_channels=512, out_channels=4 * self.nc, kernel_size=3, padding=1)
@@ -61,7 +58,7 @@ class SSD(nn.Module):
             'conv9_2': nn.Conv2d(in_channels=256, out_channels=6 * self.nc, kernel_size=3, padding=1),
             'conv10_2': nn.Conv2d(in_channels=256, out_channels=4 * self.nc, kernel_size=3, padding=1),
             'conv11_2': nn.Conv2d(in_channels=256, out_channels=4 * self.nc, kernel_size=3, padding=1),
-        }
+        })
 
         self.dboxes = self._get_dboxes()
 
@@ -167,7 +164,7 @@ class SSD(nn.Module):
         device = out_ls.device
         dboxes = self.dboxes.to(device)
         N = out_ls.size(0)
-        loss_all = loss_l = loss_c = 0
+        loss = loss_l = loss_c = 0
         for out_l, out_c, bboxes, labels in zip(out_ls, out_cs, batch_bboxes, batch_labels):
             # to GPU
             bboxes = bboxes.to(device)
@@ -202,9 +199,9 @@ class SSD(nn.Module):
         #   損失の和を計算する
         loss_l /= N
         loss_c /= N
-        loss_all = loss_c + alpha * loss_l
+        loss = loss_c + alpha * loss_l
 
-        return loss_all, loss_l, loss_c
+        return loss, loss_l, loss_c
 
     def _calc_delta(self, bboxes: torch.Tensor, dboxes: torch.Tensor, variance: list = [0.1, 0.2]) -> torch.Tensor:
         """ Δg を算出する
@@ -242,6 +239,19 @@ class SSD(nn.Module):
             torch.Tensor : calculated result
         """
         return -nn.functional.log_softmax(pred, dim=-1)[range(len(target)), target]
+
+    def get_parameters(self):
+        # features に含まれるパラメータを返し、それ以外は凍結する.
+        params_to_update = []
+
+        for name, param in self.named_parameters():
+            if 'features' in name:
+                param.requires_grad = False
+            else:
+                param.requires_grad = True
+                params_to_update.append(param)
+
+        return params_to_update
 
 
 if __name__ == '__main__':
