@@ -32,7 +32,7 @@ parser.add_argument('--work_dir', help='root directory of this repository', defa
 parser.add_argument('--data_name', help='same as the directory name placed under ./data', default='voc')
 parser.add_argument('--batch_size', help='batch size of loaded data', type=int, default=2)
 parser.add_argument('--input_size', help='input image size to model', type=int, default=300)
-parser.add_argument('--num_classes', help='number of classes to be classified', type=int, default=2)
+parser.add_argument('--num_classes', help='number of classes to be classified', type=int, default=20)
 parser.add_argument('--epochs', help='number of epochs', type=int, default=50)
 parser.add_argument('--version', help='used for output directory name', default='ssd_voc')
 
@@ -109,8 +109,8 @@ with SummaryWriter(log_dir=log_dir) as writer:
                 optimizer.step()
 
             losses[phase] += loss.item()
-            loss_ls[phase] += loss_ls.item()
-            loss_cs[phase] += loss_cs.item()
+            loss_ls[phase] += loss_l.item()
+            loss_cs[phase] += loss_c.item()
             counts[phase] += images.size(0)
 
         for phase in ['train', 'val']:
