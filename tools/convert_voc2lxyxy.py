@@ -59,3 +59,6 @@ for t in ['train', 'val']:
 
         with open(label_dst_dir / (file_name + '.txt'), 'w') as f:
             f.write('\n'.join(labels))
+
+with open(dst_dir / 'labels', 'w') as f:
+    f.write('\n'.join(data))
