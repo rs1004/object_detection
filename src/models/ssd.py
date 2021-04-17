@@ -183,9 +183,9 @@ class SSD(nn.Module):
             #   * max_iou >= 0.5 の場合、Positive Box とみなし、最大 iou の bbox を対応させる
             #   * max_iou <  0.5 の場合、Negative Box とみなす
             #   * N := Positive Box の個数。N = 0 ならば Loss = 0 とする（skip する）
-            bboxes_xyxy = box_convert(bbox, in_fmt='cxcywh', out_fmt='xyxy')
-            dboxes_xyxy = box_convert(dbox, in_fmt='cxcywh', out_fmt='xyxy')
-            max_ious, indices = box_iou(dboxes_xyxy, bboxes_xyxy).max(dim=1)
+            bbox_xyxy = box_convert(bbox, in_fmt='cxcywh', out_fmt='xyxy')
+            dbox_xyxy = box_convert(dbox, in_fmt='cxcywh', out_fmt='xyxy')
+            max_ious, indices = box_iou(dbox_xyxy, bbox_xyxy).max(dim=1)
             pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().reshape(-1), (max_ious < iou_thresh).nonzero().reshape(-1)
             N = len(pos_ids)
             if N == 0:
@@ -193,10 +193,10 @@ class SSD(nn.Module):
 
             # [Step 2]
             #   Positive Box に対して、 Localization Loss を計算する
-            bboxes_pos = bbox[indices[pos_ids]]
-            dboxes_pos = dbox[pos_ids]
-            dbboxes_pos = self._calc_delta(bbox=bboxes_pos, dbox=dboxes_pos)
-            loss_loc += (1 / N) * self._smooth_l1(out_loc[pos_ids] - dbboxes_pos).sum()
+            bbox_pos = bbox[indices[pos_ids]]
+            dbox_pos = dbox[pos_ids]
+            dbbox_pos = self._calc_delta(bbox=bbox_pos, dbox=dbox_pos)
+            loss_loc += (1 / N) * self._smooth_l1(out_loc[pos_ids] - dbbox_pos).sum()
 
             # [Step 3]
             #   Positive / Negative Box に対して、Confidence Loss を計算する
@@ -233,8 +233,8 @@ class SSD(nn.Module):
         db_w = (1 / variance[1]) * (bbox[:, 2] / dbox[:, 2]).log()
         db_h = (1 / variance[1]) * (bbox[:, 3] / dbox[:, 3]).log()
 
-        dbboxes = torch.stack([db_cx, db_cy, db_w, db_h], dim=1)
-        return dbboxes
+        dbbox = torch.stack([db_cx, db_cy, db_w, db_h], dim=1)
+        return dbbox
 
     def _smooth_l1(self, x: torch.Tensor) -> torch.Tensor:
         return torch.where(x.abs() < 1, 0.5 * x * x, x.abs() - 0.5)
@@ -242,14 +242,14 @@ class SSD(nn.Module):
     def _softmax_cross_entropy(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return -nn.functional.log_softmax(pred, dim=-1)[range(len(target)), target]
 
-    def get_parameters(self, lrs: dict = {'features': 0.001, '': 0.01}):
+    def get_parameters(self, lrs: dict = {'features': 0.001, '': 0.01}) -> list:
         """ 学習パラメータと学習率の一覧を取得する
 
         Args:
             lrs (dict, optional): 学習率の一覧. Defaults to {'features': 0.001, '': 0.01}.
 
         Returns:
-            [type]: 学習パラメータと学習率の一覧
+            list: 学習パラメータと学習率の一覧
         """
         params_to_update = {key: [] for key in lrs.keys()}
 
@@ -262,6 +262,57 @@ class SSD(nn.Module):
         params = [{'params': params_to_update[key], 'lr': lrs[key]} for key in lrs.keys()]
 
         return params
+
+    def inference(self, images: torch.Tensor, outputs: tuple, num_done: int, bbox_painter, conf_thresh: float = 0.3) -> int:
+        out_locs, out_confs = outputs
+        out_confs = nn.functional.softmax(out_confs, dim=-1)
+
+        # to CPU
+        images = images.detach().cpu()
+        out_locs = out_locs.detach().cpu()
+        out_confs = out_confs.detach().cpu()
+        H, W = images.shape[2:]
+
+        for image, out_loc, out_conf in zip(images, out_locs, out_confs):
+
+            # 座標・クラスの復元
+            conf, class_id = out_conf[:, 1:].max(dim=-1)  # 0 is background class
+            valid_ids = (conf >= conf_thresh).nonzero().reshape(-1)
+            bbox_valid = self._calc_coord(dbbox=out_loc[valid_ids], dbox=self.dbox[valid_ids])
+            bbox_valid = box_convert(bbox_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])
+            class_id_valid = class_id[valid_ids]
+            conf_valid = conf[valid_ids]
+            for bbox, class_id, conf in zip(bbox_valid, class_id_valid, conf_valid):
+                image = bbox_painter.draw_bbox(
+                    image=image,
+                    coord=bbox,
+                    class_id=class_id,
+                    conf=conf
+                )
+
+            bbox_painter.save(image, file_name=f'{num_done:06}.png')
+            num_done += 1
+
+        return num_done
+
+    def _calc_coord(self, dbbox: torch.Tensor, dbox: torch.Tensor, variance: list = [1, 1]) -> torch.Tensor:
+        """ g を算出する
+
+        Args:
+            dbbox (torch.Tensor, [X, 4]): Offset Prediction
+            dbox (torch.Tensor, [X, 4]): Default Box
+            variance (list, optional): 係数. Defaults to [0.1, 0.2].
+
+        Returns:
+            torch.Tensor: [X, 4]
+        """
+        b_cx = dbox[:, 0] + variance[0] * dbbox[:, 0] * dbox[:, 2]
+        b_cy = dbox[:, 1] + variance[0] * dbbox[:, 1] * dbox[:, 3]
+        b_w = dbox[:, 2] * (variance[1] * dbbox[:, 2]).exp()
+        b_h = dbox[:, 3] * (variance[1] * dbbox[:, 3]).exp()
+
+        bbox = torch.stack([b_cx, b_cy, b_w, b_h], dim=1)
+        return bbox
 
 
 if __name__ == '__main__':
