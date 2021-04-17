@@ -60,26 +60,26 @@ class SSD(nn.Module):
             'conv11_2': nn.Conv2d(in_channels=256, out_channels=4 * self.nc, kernel_size=3, padding=1),
         })
 
-        self.dboxes = self._get_dboxes()
+        self.dbox = self._get_dbox()
 
     def forward(self, x):
         batch_size = x.size(0)
-        out_ls = []
-        out_cs = []
+        out_locs = []
+        out_confs = []
         for name, m in self.features.items():
             x = m(x)
             if name in self.localizers:
-                out_ls.append(self.localizers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, 4))
-                out_cs.append(self.classifiers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, self.nc))
+                out_locs.append(self.localizers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, 4))
+                out_confs.append(self.classifiers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, self.nc))
 
         for name, m in self.extras.items():
             x = m(x)
             if name in self.localizers:
-                out_ls.append(self.localizers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, 4))
-                out_cs.append(self.classifiers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, self.nc))
+                out_locs.append(self.localizers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, 4))
+                out_confs.append(self.classifiers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, self.nc))
 
-        out_ls, out_cs = torch.cat(out_ls, dim=1), torch.cat(out_cs, dim=1)
-        return out_ls, out_cs
+        out_locs, out_confs = torch.cat(out_locs, dim=1), torch.cat(out_confs, dim=1)
+        return out_locs, out_confs
 
     def _parse_features(self, vgg_features: nn.Sequential) -> nn.ModuleDict:
         """ torchvision の VGG16 モデルの特徴抽出層を ConvBlock にパースする
@@ -116,7 +116,7 @@ class SSD(nn.Module):
 
         return features
 
-    def _get_dboxes(self) -> torch.Tensor:
+    def _get_dbox(self) -> torch.Tensor:
         """ Default Box を生成する
 
         Returns:
@@ -125,7 +125,7 @@ class SSD(nn.Module):
         def s_(k, m=6, s_min=0.2, s_max=0.9):
             return s_min + (s_max - s_min) * (k - 1) / (m - 1)
 
-        dboxes = []
+        dbox = []
         cfg = [[38, 38, 4], [19, 19, 6], [10, 10, 6], [5, 5, 6], [3, 3, 4], [1, 1, 4]]
 
         for k, (H, W, num_aspects) in enumerate(cfg, start=1):
@@ -140,84 +140,94 @@ class SSD(nn.Module):
                         else:
                             w = s_(k) * pow(a, 0.5)
                             h = s_(k) * pow(1 / a, 0.5)
-                        dboxes.append([cx, cy, w, h])
+                        dbox.append([cx, cy, w, h])
 
-        dboxes = torch.tensor(dboxes)
-        return dboxes
+        dbox = torch.tensor(dbox)
+        return dbox
 
-    def loss(self, out_ls: torch.Tensor, out_cs: torch.Tensor, batch_bboxes: list, batch_labels: list,
-             iou_thresh: float = 0.5, alpha: float = 1.0) -> tuple:
+    def loss(self, outputs: tuple, bboxes: list, labels: list, iou_thresh: float = 0.5, alpha: float = 1.0) -> dict:
         """ 損失関数
 
         Args:
-            out_ls (torch.Tensor): 予測オフセット (B, D, 4) (fmt: [Δcx, Δcy, Δw, Δh])
-                                   D: DBoxの数. D = 8732 の想定.
-            out_cs (torch.Tensor): 予測信頼度 (B, D, 21)
-            batch_bboxes (list): 正解BBOX座標 [(G1, 4), (G2, 4), ...] (fmt: [cx, cy, w, h])
-            batch_labels (list): 正解ラベル [(G1,), (G2,)]
+            outputs (tuple): (予測オフセット, 予測信頼度)
+                            * 予測オフセット : (B, D, 4) (fmt: [Δcx, Δcy, Δw, Δh])
+                                    (D: DBoxの数. D = 8732 の想定.)
+                            * 予測信頼度     : (B, D, num_classes + 1)
+            bboxes (list): 正解BBOX座標 [(G1, 4), (G2, 4), ...] (fmt: [cx, cy, w, h])
+            labels (list): 正解ラベル [(G1,), (G2,)]
             iou_thresh (float): Potitive / Negative を判定する際の iou の閾値
+            alpha (float): loss = loss_conf + α * loss_loc の α
 
         Returns:
-            tuple: (loss, localization loss, classification loss)
+            dict: {
+                loss: xxx,
+                loss_loc: xxx,
+                loss_conf: xxx
+            }
         """
+        out_locs, out_confs = outputs
 
-        device = out_ls.device
-        dboxes = self.dboxes.to(device)
-        N = out_ls.size(0)
-        loss = loss_l = loss_c = 0
-        for out_l, out_c, bboxes, labels in zip(out_ls, out_cs, batch_bboxes, batch_labels):
+        device = out_locs.device
+        dbox = self.dbox.to(device)
+        N = out_locs.size(0)
+        loss = loss_loc = loss_conf = 0
+        for out_loc, out_conf, bbox, label in zip(out_locs, out_confs, bboxes, labels):
             # to GPU
-            bboxes = bboxes.to(device)
-            labels = labels.to(device)
+            bbox = bbox.to(device)
+            label = label.to(device)
 
             # [Step 1]
             #   各 Default Box を bbox に対応させ、Positive, Negative の判定を行う
             #   * max_iou >= 0.5 の場合、Positive Box とみなし、最大 iou の bbox を対応させる
             #   * max_iou <  0.5 の場合、Negative Box とみなす
-            bboxes_xyxy = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
-            dboxes_xyxy = box_convert(dboxes, in_fmt='cxcywh', out_fmt='xyxy')
+            bboxes_xyxy = box_convert(bbox, in_fmt='cxcywh', out_fmt='xyxy')
+            dboxes_xyxy = box_convert(dbox, in_fmt='cxcywh', out_fmt='xyxy')
             max_ious, indices = box_iou(dboxes_xyxy, bboxes_xyxy).max(dim=1)
             pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().reshape(-1), (max_ious < iou_thresh).nonzero().reshape(-1)
 
             # [Step 2]
             #   Positive Box に対して、 Localization Loss を計算する
-            bboxes_pos = bboxes[indices[pos_ids]]
-            dboxes_pos = dboxes[pos_ids]
-            dbboxes_pos = self._calc_delta(bboxes=bboxes_pos, dboxes=dboxes_pos)
-            loss_l += self._smooth_l1(out_l[pos_ids] - dbboxes_pos).sum()
+            bboxes_pos = bbox[indices[pos_ids]]
+            dboxes_pos = dbox[pos_ids]
+            dbboxes_pos = self._calc_delta(bbox=bboxes_pos, dbox=dboxes_pos)
+            loss_loc += self._smooth_l1(out_loc[pos_ids] - dbboxes_pos).sum()
 
             # [Step 3]
             #   Positive / Negative Box に対して、Confidence Loss を計算する
             #   * Negative Box の label は 0 とする (Positive Box の label を 1 ずらす)
             #   * Negative Box は Loss の上位 len(pos_ids) * 3 個のみを計算に使用する (Hard Negative Mining)
-            labels = labels[indices] + 1
-            labels[neg_ids] = 0
-            sce = self._softmax_cross_entropy(out_c, labels)
-            loss_c += sce[pos_ids].sum() + sce[neg_ids].topk(k=len(pos_ids) * 3).values.sum()
+            label = label[indices] + 1
+            label[neg_ids] = 0
+            sce = self._softmax_cross_entropy(out_conf, label)
+            loss_conf += sce[pos_ids].sum() + sce[neg_ids].topk(k=len(pos_ids) * 3).values.sum()
 
         # [Step 4]
         #   損失の和を計算する
-        loss_l /= N
-        loss_c /= N
-        loss = loss_c + alpha * loss_l
+        loss_loc /= N
+        loss_conf /= N
+        loss = loss_conf + alpha * loss_loc
 
-        return loss, loss_l, loss_c
+        return {
+            'loss': loss,
+            'loss_loc': loss_loc,
+            'loss_conf': loss_conf
+        }
 
-    def _calc_delta(self, bboxes: torch.Tensor, dboxes: torch.Tensor, variance: list = [0.1, 0.2]) -> torch.Tensor:
+    def _calc_delta(self, bbox: torch.Tensor, dbox: torch.Tensor, variance: list = [0.1, 0.2]) -> torch.Tensor:
         """ Δg を算出する
 
         Args:
-            bboxes (torch.Tensor, [X, 4]): BBox
-            dboxes (torch.Tensor, [X, 4]): Default Box
+            bbox (torch.Tensor, [X, 4]): GT BBox
+            dbox (torch.Tensor, [X, 4]): Default Box
             variance (list, optional): 係数. Defaults to [0.1, 0.2].
 
         Returns:
             torch.Tensor: [X, 4]
         """
-        db_cx = (1 / variance[0]) * (bboxes[:, 0] - dboxes[:, 0]) / dboxes[:, 2]
-        db_cy = (1 / variance[0]) * (bboxes[:, 1] - dboxes[:, 1]) / dboxes[:, 3]
-        db_w = (1 / variance[1]) * (bboxes[:, 2] / dboxes[:, 2]).log()
-        db_h = (1 / variance[1]) * (bboxes[:, 3] / dboxes[:, 3]).log()
+        db_cx = (1 / variance[0]) * (bbox[:, 0] - dbox[:, 0]) / dbox[:, 2]
+        db_cy = (1 / variance[0]) * (bbox[:, 1] - dbox[:, 1]) / dbox[:, 3]
+        db_w = (1 / variance[1]) * (bbox[:, 2] / dbox[:, 2]).log()
+        db_h = (1 / variance[1]) * (bbox[:, 3] / dbox[:, 3]).log()
 
         dbboxes = torch.stack([db_cx, db_cy, db_w, db_h], dim=1)
         return dbboxes
@@ -259,14 +269,15 @@ if __name__ == '__main__':
     x = torch.rand(2, 3, 300, 300)
 
     model = SSD(num_classes=20, pretrained=False)
-    out_ls, out_cs = model(x)
-    print(out_ls.shape, out_cs.shape)
-    for coord in model.dboxes:
+    outputs = model(x)
+    print(outputs[0].shape, outputs[1].shape)
+    for coord in model.dbox:
         print(coord)
 
-    out_ls = torch.rand(4, 8732, 4)
-    out_cs = torch.rand(4, 8732, 21)
-    batch_bboxes = [torch.rand(5, 4) for _ in range(4)]
-    batch_labels = [torch.randint(0, 20, (5,)) for _ in range(4)]
+    out_locs = torch.rand(4, 8732, 4)
+    out_confs = torch.rand(4, 8732, 21)
+    outputs = (out_locs, out_confs)
+    bboxes = [torch.rand(5, 4) for _ in range(4)]
+    labels = [torch.randint(0, 20, (5,)) for _ in range(4)]
 
-    print(model.loss(out_ls, out_cs, batch_bboxes, batch_labels))
+    print(model.loss(outputs, bboxes, labels))

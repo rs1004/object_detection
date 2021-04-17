@@ -7,7 +7,9 @@ from torch.optim.lr_scheduler import MultiStepLR
 from torch.utils.tensorboard import SummaryWriter
 from models import SSD
 from pathlib import Path
+from torchsummary import summary
 from tqdm import tqdm
+from collections import defaultdict
 
 
 def chain(loaders: dict) -> tuple:
@@ -76,7 +78,9 @@ scheduler = MultiStepLR(optimizer, milestones=[100, 200])
 
 torch.backends.cudnn.benchmark = True
 
-print(f'''########## TRAINING START ##########
+print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
+<-><-><-><-><-><-> TRAINING START ! <-><-><-><-><-><->
+<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 [CONFIG]
 * version\t: {args.version}
 * batch_size\t: {args.batch_size}
@@ -88,6 +92,9 @@ print(f'''########## TRAINING START ##########
 [MODEL]
 * {model.__class__.__name__}{args.input_size}
 
+[MODEL SUMMARY]
+{summary(model, (3, args.input_size, args.input_size))}
+
 [OPTIMIZER]
 * {optimizer.__class__.__name__}
 * params : {optimizer.defaults}
@@ -98,14 +105,12 @@ print(f'''########## TRAINING START ##########
     ' -> '.join(
         f'{round(scheduler.get_last_lr()[0] * pow(scheduler.gamma, i), 5)} ({s} epc~)'
         for i, s in enumerate(scheduler.milestones.keys(), start=1))}
-####################################
+<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 ''')
 min_val_loss = 99999
 with SummaryWriter(log_dir=log_dir) as writer:
     for epoch in range(1, args.epochs + 1):
-        losses = {'train': 0, 'val': 0}
-        loss_ls = {'train': 0, 'val': 0}
-        loss_cs = {'train': 0, 'val': 0}
+        losses = {'train': defaultdict(lambda: 0), 'val': defaultdict(lambda: 0)}
         counts = {'train': 0, 'val': 0}
         for phase, (images, bboxes, labels) in tqdm(chain(dataloaders), total=sum(len(dl) for dl in dataloaders.values()), desc=f'[Epoch {epoch:3}]'):
             if phase == 'train':
@@ -120,45 +125,35 @@ with SummaryWriter(log_dir=log_dir) as writer:
             images = images.to(device)
 
             # forward + backward + optimize
-            out_ls, out_cs = model(images)
-            loss, loss_l, loss_c = criterion(
-                out_ls=out_ls,
-                out_cs=out_cs,
-                batch_bboxes=bboxes,
-                batch_labels=labels
-            )
+            outputs = model(images)
+            loss = criterion(outputs, bboxes, labels)
 
             if phase == 'train':
-                loss.backward()
+                loss['loss'].backward()
                 optimizer.step()
 
-            losses[phase] += loss.item()
-            loss_ls[phase] += loss_l.item()
-            loss_cs[phase] += loss_c.item()
+            for kind in loss.keys():
+                losses[phase][kind] += loss[kind].item() * images.size(0)
             counts[phase] += images.size(0)
 
         for phase in ['train', 'val']:
-            losses[phase] /= counts[phase]
-            loss_ls[phase] /= counts[phase]
-            loss_cs[phase] /= counts[phase]
+            for kind in losses[phase].keys():
+                losses[phase][kind] /= counts[phase]
 
-        print(f'loss: {losses["train"]:.04f}, val_loss: {losses["val"]:.04f}')
+        print(f'loss: {losses["train"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["train"].items()])})')
+        print(f'val_loss: {losses["val"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["val"].items()])})')
 
         # tensor board への書き込み
-        writer.add_scalar('loss', losses["train"], epoch)
-        writer.add_scalar('loss/localization', loss_ls["train"], epoch)
-        writer.add_scalar('loss/confidence', loss_cs["train"], epoch)
-        writer.add_scalar('val_loss', losses["val"], epoch)
-        writer.add_scalar('val_loss/localization', loss_ls["val"], epoch)
-        writer.add_scalar('val_loss/confidence', loss_cs["val"], epoch)
-
+        for phase in ['train', 'val']:
+            for kind in losses[phase].keys():
+                writer.add_scalar(f'{kind}/{phase}', losses[phase][kind], epoch)
         writer.add_scalar('lr', scheduler.get_last_lr()[0], epoch)
 
         # 重みファイル保存
-        if losses['val'] < min_val_loss:
+        if losses['val']['loss'] < min_val_loss:
             weights_dir.mkdir(exist_ok=True, parents=True)
             torch.save(model.state_dict(), weights_dir / 'latest.pth')
-            min_val_loss = losses['val']
+            min_val_loss = losses['val']['loss']
 
         # スケジューラ更新
         scheduler.step()
