@@ -73,8 +73,8 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
 criterion = model.loss
-optimizer = SGD(params=model.get_parameters(), lr=0.01, momentum=0.9, weight_decay=0.005)
-scheduler = MultiStepLR(optimizer, milestones=[100, 200])
+optimizer = SGD(params=model.get_parameters(), lr=0.001, momentum=0.9, weight_decay=0.0005)
+scheduler = MultiStepLR(optimizer, milestones=[int(args.epochs * 0.5), int(args.epochs * 0.75)])
 
 torch.backends.cudnn.benchmark = True
 

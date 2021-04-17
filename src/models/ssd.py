@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torchvision.models import vgg16_bn
 from collections import Counter
+from itertools import product
 from torchvision.ops import box_iou, box_convert
 from models.layers import ConvBlock, L2Norm
 
@@ -88,7 +89,7 @@ class SSD(nn.Module):
             vgg_features (nn.Sequential): features of vgg16
 
         Returns:
-            nn.ModuleDict: ConvBlock の集合. conv1_1 ~ conv5_3
+            nn.ModuleDict: ConvBlock の集合. conv1_1 ~ conv5_3 + new pool5
         """
         for m in vgg_features:
             if isinstance(m, nn.MaxPool2d):
@@ -113,6 +114,8 @@ class SSD(nn.Module):
                 l_counter['layer'] += 1
                 m_counter.clear()
                 args.clear()
+        # change pool5 from 2 x 2 - s2 to 3 x 3 - s1
+        features[f"pool{l_counter['layer']}"] = nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
 
         return features
 
@@ -126,21 +129,20 @@ class SSD(nn.Module):
             return s_min + (s_max - s_min) * (k - 1) / (m - 1)
 
         dbox = []
-        cfg = [[38, 38, 4], [19, 19, 6], [10, 10, 6], [5, 5, 6], [3, 3, 4], [1, 1, 4]]
+        cfg = [[38, 4], [19, 6], [10, 6], [5, 6], [3, 4], [1, 4]]
 
-        for k, (H, W, num_aspects) in enumerate(cfg, start=1):
+        for k, (f_k, num_aspects) in enumerate(cfg, start=1):
             aspects = [1, 2, 1 / 2, 'add'] if num_aspects == 4 else [1, 2, 3, 1 / 2, 1 / 3, 'add']
-            for i in range(H):
-                for j in range(W):
-                    cx = (j + 0.5) / W
-                    cy = (i + 0.5) / H
-                    for a in aspects:
-                        if a == 'add':
-                            w = h = pow(s_(k) * s_(k + 1), 0.5)
-                        else:
-                            w = s_(k) * pow(a, 0.5)
-                            h = s_(k) * pow(1 / a, 0.5)
-                        dbox.append([cx, cy, w, h])
+            for i, j in product(range(f_k), repeat=2):
+                cx = (j + 0.5) / f_k
+                cy = (i + 0.5) / f_k
+                for a in aspects:
+                    if a == 'add':
+                        w = h = pow(s_(k) * s_(k + 1), 0.5)
+                    else:
+                        w = s_(k) * pow(a, 0.5)
+                        h = s_(k) * pow(1 / a, 0.5)
+                    dbox.append([cx, cy, w, h])
 
         dbox = torch.tensor(dbox)
         return dbox
@@ -169,7 +171,7 @@ class SSD(nn.Module):
 
         device = out_locs.device
         dbox = self.dbox.to(device)
-        N = out_locs.size(0)
+        B = out_locs.size(0)
         loss = loss_loc = loss_conf = 0
         for out_loc, out_conf, bbox, label in zip(out_locs, out_confs, bboxes, labels):
             # to GPU
@@ -184,13 +186,14 @@ class SSD(nn.Module):
             dboxes_xyxy = box_convert(dbox, in_fmt='cxcywh', out_fmt='xyxy')
             max_ious, indices = box_iou(dboxes_xyxy, bboxes_xyxy).max(dim=1)
             pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().reshape(-1), (max_ious < iou_thresh).nonzero().reshape(-1)
+            N = len(pos_ids)
 
             # [Step 2]
             #   Positive Box に対して、 Localization Loss を計算する
             bboxes_pos = bbox[indices[pos_ids]]
             dboxes_pos = dbox[pos_ids]
             dbboxes_pos = self._calc_delta(bbox=bboxes_pos, dbox=dboxes_pos)
-            loss_loc += self._smooth_l1(out_loc[pos_ids] - dbboxes_pos).sum()
+            loss_loc += (1 / N) * self._smooth_l1(out_loc[pos_ids] - dbboxes_pos).sum()
 
             # [Step 3]
             #   Positive / Negative Box に対して、Confidence Loss を計算する
@@ -199,21 +202,19 @@ class SSD(nn.Module):
             label = label[indices] + 1
             label[neg_ids] = 0
             sce = self._softmax_cross_entropy(out_conf, label)
-            loss_conf += sce[pos_ids].sum() + sce[neg_ids].topk(k=len(pos_ids) * 3).values.sum()
+            loss_conf += (1 / N) * (sce[pos_ids].sum() + sce[neg_ids].topk(k=N * 3).values.sum())
 
         # [Step 4]
         #   損失の和を計算する
-        loss_loc /= N
-        loss_conf /= N
         loss = loss_conf + alpha * loss_loc
 
         return {
-            'loss': loss,
-            'loss_loc': loss_loc,
-            'loss_conf': loss_conf
+            'loss': (1 / B) * loss,
+            'loss_loc': (1 / B) * loss_loc,
+            'loss_conf': (1 / B) * loss_conf
         }
 
-    def _calc_delta(self, bbox: torch.Tensor, dbox: torch.Tensor, variance: list = [0.1, 0.2]) -> torch.Tensor:
+    def _calc_delta(self, bbox: torch.Tensor, dbox: torch.Tensor, variance: list = [1, 1]) -> torch.Tensor:
         """ Δg を算出する
 
         Args:
@@ -255,11 +256,7 @@ class SSD(nn.Module):
         params_to_update = []
 
         for name, param in self.named_parameters():
-            if 'features' in name:
-                param.requires_grad = False
-            else:
-                param.requires_grad = True
-                params_to_update.append(param)
+            params_to_update.append(param)
 
         return params_to_update
 
