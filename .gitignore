@@ -3,6 +3,8 @@ DEV
 *egg-info
 __pycache__
 .ipynb*
+memo*
+*.png
 
 data
 result
