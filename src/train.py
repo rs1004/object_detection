@@ -31,7 +31,8 @@ def chain(loaders: dict) -> tuple:
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--data_name', help='same as the directory name placed under ./data', default='voc')
-parser.add_argument('--batch_size', help='batch size of loaded data', type=int, default=2)
+parser.add_argument('--out_dir', help='directory to save weight files etc', default='./result')
+parser.add_argument('--batch_size', help='batch size of loaded data', type=int, default=32)
 parser.add_argument('--input_size', help='input image size to model', type=int, default=300)
 parser.add_argument('--epochs', help='number of epochs', type=int, default=50)
 parser.add_argument('--version', help='used for output directory name', default='ssd_voc')
@@ -40,8 +41,8 @@ args = parser.parse_args()
 # --------------------------------------------------
 
 data_dir = f'./data/{args.data_name}'
-log_dir = f'./result/{args.version}/logs'
-weights_dir = Path(f'./result/{args.version}/weights')
+log_dir = Path(args.out_dir) / args.version / 'logs'
+weights_dir = Path(args.out_dir) / args.version / 'weights'
 with open(Path(data_dir) / 'labels', 'r') as f:
     num_classes = len(f.read().split('\n'))
 
@@ -85,6 +86,7 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 * version\t: {args.version}
 * batch_size\t: {args.batch_size}
 * epochs\t: {args.epochs}
+* out_dir\t: {args.out_dir}
 
 [DATASET]
 * {args.data_name}
