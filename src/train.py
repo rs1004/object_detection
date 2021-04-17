@@ -1,5 +1,6 @@
 import argparse
 import torch
+from shutil import rmtree
 from datautils import DetectionDataset
 from torch.utils.data import DataLoader
 from torch.optim import SGD
@@ -43,6 +44,8 @@ args = parser.parse_args()
 data_dir = f'./data/{args.data_name}'
 log_dir = Path(args.out_dir) / args.version / 'logs'
 weights_dir = Path(args.out_dir) / args.version / 'weights'
+for d in [log_dir, weights_dir]:
+    rmtree(d, ignore_errors=True)
 with open(Path(data_dir) / 'labels', 'r') as f:
     num_classes = len(f.read().split('\n'))
 
@@ -142,8 +145,8 @@ with SummaryWriter(log_dir=log_dir) as writer:
             for kind in losses[phase].keys():
                 losses[phase][kind] /= counts[phase]
 
-        print(f'loss: {losses["train"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["train"].items()])})')
-        print(f'val_loss: {losses["val"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["val"].items()])})')
+        print(f'loss\t: {losses["train"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["train"].items()])})')
+        print(f'val_loss\t: {losses["val"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["val"].items()])})')
 
         # tensor board への書き込み
         for phase in ['train', 'val']:

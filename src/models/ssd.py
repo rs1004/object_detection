@@ -182,11 +182,14 @@ class SSD(nn.Module):
             #   各 Default Box を bbox に対応させ、Positive, Negative の判定を行う
             #   * max_iou >= 0.5 の場合、Positive Box とみなし、最大 iou の bbox を対応させる
             #   * max_iou <  0.5 の場合、Negative Box とみなす
+            #   * N := Positive Box の個数。N = 0 ならば Loss = 0 とする（skip する）
             bboxes_xyxy = box_convert(bbox, in_fmt='cxcywh', out_fmt='xyxy')
             dboxes_xyxy = box_convert(dbox, in_fmt='cxcywh', out_fmt='xyxy')
             max_ious, indices = box_iou(dboxes_xyxy, bboxes_xyxy).max(dim=1)
             pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().reshape(-1), (max_ious < iou_thresh).nonzero().reshape(-1)
             N = len(pos_ids)
+            if N == 0:
+                continue
 
             # [Step 2]
             #   Positive Box に対して、 Localization Loss を計算する
