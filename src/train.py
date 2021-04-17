@@ -113,6 +113,7 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
     ' -> '.join(
         f'{scheduler.get_last_lr()[-1] * pow(scheduler.gamma, i):.1e} ({s} epc~)'
         for i, s in enumerate(scheduler.milestones.keys(), start=1))}
+
 <-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 ''')
 min_val_loss = 99999
@@ -148,14 +149,15 @@ with SummaryWriter(log_dir=log_dir) as writer:
             for kind in losses[phase].keys():
                 losses[phase][kind] /= counts[phase]
 
-        print(f'  loss     : {losses["train"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["train"].items()])})')
-        print(f'  val_loss : {losses["val"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["val"].items()])})')
-
         # tensor board への書き込み
         for phase in ['train', 'val']:
             for kind in losses[phase].keys():
-                writer.add_scalar(f'{kind}/{phase}', losses[phase][kind], epoch)
-        writer.add_scalar('lr', scheduler.get_last_lr()[0], epoch)
+                writer.add_scalar(f'loss/{phase}/{kind}', losses[phase][kind], epoch)
+        for i, lr in enumerate(scheduler.get_last_lr(), start=1):
+            writer.add_scalar(f'lr/lr_{i}', lr, epoch)
+
+        print(f'  loss     : {losses["train"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["train"].items()])})')
+        print(f'  val_loss : {losses["val"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["val"].items()])})')
 
         # 重みファイル保存
         if losses['val']['loss'] < min_val_loss:

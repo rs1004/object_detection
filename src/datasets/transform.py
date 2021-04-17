@@ -1,4 +1,4 @@
-import datautils.augmentation as A
+import datasets.augmentation as A
 
 
 class DataTransform:
@@ -40,7 +40,7 @@ class DataTransform:
 
 
 if __name__ == '__main__':
-    from datautils.dataset import DetectionDataset
+    from datasets.dataset import DetectionDataset
     from PIL import Image, ImageDraw
 
     size = 300
