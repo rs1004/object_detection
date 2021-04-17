@@ -237,31 +237,31 @@ class SSD(nn.Module):
         return dbboxes
 
     def _smooth_l1(self, x: torch.Tensor) -> torch.Tensor:
-        """ smooth l1 を計算する
-        Args:
-            x (torch.Tensor): any tensor
-        Returns:
-            torch.Tensor : calculated result
-        """
         return torch.where(x.abs() < 1, 0.5 * x * x, x.abs() - 0.5)
 
     def _softmax_cross_entropy(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        """ softmax cross entropy を計算する
-        Args:
-            x (torch.Tensor): any tensor
-        Returns:
-            torch.Tensor : calculated result
-        """
         return -nn.functional.log_softmax(pred, dim=-1)[range(len(target)), target]
 
-    def get_parameters(self):
-        # features に含まれるパラメータを返し、それ以外は凍結する.
-        params_to_update = []
+    def get_parameters(self, lrs: dict = {'features': 0.001, '': 0.01}):
+        """ 学習パラメータと学習率の一覧を取得する
+
+        Args:
+            lrs (dict, optional): 学習率の一覧. Defaults to {'features': 0.001, '': 0.01}.
+
+        Returns:
+            [type]: 学習パラメータと学習率の一覧
+        """
+        params_to_update = {key: [] for key in lrs.keys()}
 
         for name, param in self.named_parameters():
-            params_to_update.append(param)
+            for key in sorted(lrs.keys(), reverse=True):
+                if key in name:
+                    params_to_update[key].append(param)
+                    break
 
-        return params_to_update
+        params = [{'params': params_to_update[key], 'lr': lrs[key]} for key in lrs.keys()]
+
+        return params
 
 
 if __name__ == '__main__':

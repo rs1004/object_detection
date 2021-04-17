@@ -105,13 +105,13 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 
 [OPTIMIZER]
 - {optimizer.__class__.__name__}
-- params : {optimizer.defaults}
+- hyper params : {optimizer.defaults}
 
 [SCHEDULER]
 - {scheduler.__class__.__name__}
-- milestones: lr = {scheduler.get_last_lr()[0]:.1e} -> {
+- milestones: lr = {scheduler.get_last_lr()[-1]:.1e} -> {
     ' -> '.join(
-        f'{scheduler.get_last_lr()[0] * pow(scheduler.gamma, i):.1e} ({s} epc~)'
+        f'{scheduler.get_last_lr()[-1] * pow(scheduler.gamma, i):.1e} ({s} epc~)'
         for i, s in enumerate(scheduler.milestones.keys(), start=1))}
 <-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 ''')
