@@ -82,9 +82,9 @@ scheduler = MultiStepLR(optimizer, milestones=[int(args.epochs * 0.5), int(args.
 
 torch.backends.cudnn.benchmark = True
 
-print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
-<-><-><-><-><-><-> TRAINING START ! <-><-><-><-><-><->
-<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
+print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
+<-><-><-><-><-><-><-> TRAINING START ! <-><-><-><-><-><-><->
+<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 [CONFIG]
 - version    : {args.version}
 - batch_size : {args.batch_size}
@@ -113,7 +113,7 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
     ' -> '.join(
         f'{scheduler.get_last_lr()[-1] * pow(scheduler.gamma, i):.1e} ({s} epc~)'
         for i, s in enumerate(scheduler.milestones.keys(), start=1))}
-<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
+<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 ''')
 min_val_loss = 99999
 with SummaryWriter(log_dir=log_dir) as writer:
