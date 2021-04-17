@@ -145,8 +145,8 @@ with SummaryWriter(log_dir=log_dir) as writer:
             for kind in losses[phase].keys():
                 losses[phase][kind] /= counts[phase]
 
-        print(f'loss\t: {losses["train"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["train"].items()])})')
-        print(f'val_loss\t: {losses["val"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["val"].items()])})')
+        print(f'  loss\t: {losses["train"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["train"].items()])})')
+        print(f'  val_loss\t: {losses["val"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["val"].items()])})')
 
         # tensor board への書き込み
         for phase in ['train', 'val']:
