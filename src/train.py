@@ -86,29 +86,32 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 <-><-><-><-><-><-> TRAINING START ! <-><-><-><-><-><->
 <-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 [CONFIG]
-* version\t: {args.version}
-* batch_size\t: {args.batch_size}
-* epochs\t: {args.epochs}
-* out_dir\t: {args.out_dir}
+- version    : {args.version}
+- batch_size : {args.batch_size}
+- epochs     : {args.epochs}
+- out_dir    : {args.out_dir}
+
+[RUNTIME]
+- {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}
 
 [DATASET]
-* {args.data_name}
+- {args.data_name}
 
 [MODEL]
-* {model.__class__.__name__}{args.input_size}
+- {model.__class__.__name__}{args.input_size}
 
 [MODEL SUMMARY]
 {summary(model, (args.batch_size, 3, args.input_size, args.input_size), verbose=1)}
 
 [OPTIMIZER]
-* {optimizer.__class__.__name__}
-* params : {optimizer.defaults}
+- {optimizer.__class__.__name__}
+- params : {optimizer.defaults}
 
 [SCHEDULER]
-* {scheduler.__class__.__name__}
-* milestones: {
+- {scheduler.__class__.__name__}
+- milestones: lr = {scheduler.get_last_lr()[0]:.1e} -> {
     ' -> '.join(
-        f'{round(scheduler.get_last_lr()[0] * pow(scheduler.gamma, i), 5)} ({s} epc~)'
+        f'{scheduler.get_last_lr()[0] * pow(scheduler.gamma, i):.1e} ({s} epc~)'
         for i, s in enumerate(scheduler.milestones.keys(), start=1))}
 <-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 ''')
