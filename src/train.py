@@ -8,7 +8,7 @@ from torch.optim.lr_scheduler import MultiStepLR
 from torch.utils.tensorboard import SummaryWriter
 from models import SSD
 from pathlib import Path
-from torchsummary import summary
+from torchinfo import summary
 from tqdm import tqdm
 from collections import defaultdict
 
@@ -98,7 +98,7 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 * {model.__class__.__name__}{args.input_size}
 
 [MODEL SUMMARY]
-{summary(model, (3, args.input_size, args.input_size))}
+{summary(model, (args.batch_size, 3, args.input_size, args.input_size), verbose=1)}
 
 [OPTIMIZER]
 * {optimizer.__class__.__name__}
@@ -145,8 +145,8 @@ with SummaryWriter(log_dir=log_dir) as writer:
             for kind in losses[phase].keys():
                 losses[phase][kind] /= counts[phase]
 
-        print(f'  loss\t: {losses["train"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["train"].items()])})')
-        print(f'  val_loss\t: {losses["val"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["val"].items()])})')
+        print(f'  loss     : {losses["train"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["train"].items()])})')
+        print(f'  val_loss : {losses["val"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["val"].items()])})')
 
         # tensor board への書き込み
         for phase in ['train', 'val']:
