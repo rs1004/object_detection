@@ -1,7 +1,7 @@
 import argparse
 import torch
 from shutil import rmtree
-from datautils import DetectionDataset
+from datasets import DetectionDataset
 from torch.utils.data import DataLoader
 from torch.optim import SGD
 from torch.optim.lr_scheduler import MultiStepLR
