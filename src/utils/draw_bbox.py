@@ -1,6 +1,6 @@
 import torch
 import seaborn as sns
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 
 
@@ -28,10 +28,11 @@ class BBoxPainter:
         xmin, ymin, xmax, ymax = coord
         color = self.palette[int(class_id)]
         text = f'{self.classes[int(class_id)]}: {round(float(conf), 3)}'
+        font = ImageFont.truetype((Path(__file__).parent / 'Gargi.ttf').as_posix())
 
         draw = ImageDraw.Draw(image)
         draw.rectangle((int(xmin), int(ymin), int(xmax), int(ymax)), outline=color, width=2)
-        draw.text((xmin, ymin), text, fill=color)
+        draw.text((xmin, ymin), text, fill=color, font=font)
 
         return image
 
