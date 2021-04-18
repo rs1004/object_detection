@@ -35,10 +35,11 @@ class BBoxPainter:
 
         return image
 
-    def save(self, image: Image, file_name: str):
+    def save(self, image: Image, file_name: str, imsize: tuple = (600, 400)):
         if isinstance(image, torch.Tensor):
             image = self._to_pil_image(image)
 
+        image = image.resize(imsize)
         image.save(Path(self.save_dir) / file_name)
 
     def _to_pil_image(self, image_tensor):

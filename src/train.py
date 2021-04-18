@@ -1,7 +1,7 @@
 import argparse
 import torch
 from shutil import rmtree
-from datasets import DetectionDataset
+from datasets import DetectionDataset, MetaData
 from torch.utils.data import DataLoader
 from torch.optim import SGD
 from torch.optim.lr_scheduler import MultiStepLR
@@ -42,12 +42,12 @@ args = parser.parse_args()
 # --------------------------------------------------
 
 data_dir = f'./data/{args.data_name}'
+meta = MetaData(data_dir=data_dir)
+
 log_dir = Path(args.out_dir) / args.version / 'logs'
 weights_dir = Path(args.out_dir) / args.version / 'weights'
 for d in [log_dir, weights_dir]:
     rmtree(d, ignore_errors=True)
-with open(Path(data_dir) / 'labels', 'r') as f:
-    num_classes = len(f.read().split('\n'))
 
 # データ生成
 dataloaders = {}
@@ -66,7 +66,7 @@ for phase in ['train', 'val']:
     )
 
 # モデル
-model = SSD(num_classes=num_classes)
+model = SSD(num_classes=meta.num_classes)
 
 weights_path = weights_dir / 'latest.pth'
 if weights_path.exists():

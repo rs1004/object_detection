@@ -11,6 +11,7 @@ class DetectionDataset(Dataset):
     Args:
         data_dir (str): 画像データのディレクトリ
         input_size (int): モデルへの画像の入力サイズ (データ拡張で使用)
+        norm_cfg (dict): 画像の標準化設定値（データ拡張で使用）
         fmt (str): bbox のフォーマット. 'xyxy' or 'cxcywh'
         phase (str): 'train' or 'val'
     Returns:
@@ -19,14 +20,14 @@ class DetectionDataset(Dataset):
                               label: torch.tensor (k,)
     """
 
-    def __init__(self, data_dir: str, input_size: int, fmt: str = 'cxcywh', phase: str = 'train'):
+    def __init__(self, data_dir: str, input_size: int, norm_cfg: dict, fmt: str = 'cxcywh', phase: str = 'train'):
         super(DetectionDataset, self).__init__()
         self.data_list = self._get_data_list(data_dir, phase)
         self.fmt = fmt
         self.transform = DataTransform(
             input_size=input_size,
-            mean=(0.485, 0.456, 0.406),
-            std=(0.229, 0.224, 0.225),
+            mean=norm_cfg['mean'],
+            std=norm_cfg['std'],
             phase=phase
         )
 

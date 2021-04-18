@@ -1,7 +1,7 @@
 import argparse
 import torch
 from shutil import rmtree
-from datasets import DetectionDataset
+from datasets import DetectionDataset, MetaData
 from torch.utils.data import DataLoader
 from models import SSD
 from utils import BBoxPainter
@@ -21,19 +21,18 @@ args = parser.parse_args()
 # --------------------------------------------------
 
 data_dir = f'./data/{args.data_name}'
+meta = MetaData(data_dir=data_dir)
+
 test_dir = Path(args.out_dir) / args.version / 'test'
 weights_dir = Path(args.out_dir) / args.version / 'weights'
 rmtree(test_dir, ignore_errors=True)
 test_dir.mkdir(parents=True, exist_ok=True)
 
-with open(Path(data_dir) / 'labels', 'r') as f:
-    classes = f.read().split('\n')
-    num_classes = len(classes)
-
 # データ生成
 dataset = DetectionDataset(
     data_dir=data_dir,
     input_size=args.input_size,
+    norm_cfg=meta.norm_cfg,
     phase='train'
 )
 
@@ -45,7 +44,7 @@ dataloader = DataLoader(
 )
 
 # モデル
-model = SSD(num_classes=num_classes)
+model = SSD(num_classes=meta.num_classes)
 
 weights_path = weights_dir / 'latest.pth'
 if weights_path.exists():
@@ -56,7 +55,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
 predictor = model.inference
-painter = BBoxPainter(classes=classes, save_dir=test_dir)
+painter = BBoxPainter(classes=meta.classes, save_dir=test_dir)
 
 torch.backends.cudnn.benchmark = True
 
@@ -77,14 +76,17 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 [MODEL]
 - {model.__class__.__name__}{args.input_size}
 
+[WEIGHTS]
+- {weights_path.as_posix() if weights_path.exists() else 'None'}
+
 <-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 ''')
 
+model.eval()
+torch.set_grad_enabled(False)
+
 num_done = 0
 for images, bboxes, labels in tqdm(dataloader, total=len(dataloader)):
-    model.eval()
-    torch.set_grad_enabled(False)
-
     # to GPU device
     images = images.to(device)
 
@@ -92,7 +94,7 @@ for images, bboxes, labels in tqdm(dataloader, total=len(dataloader)):
     outputs = model(images)
 
     # inference + evaluation
-    num_done = predictor(images, outputs, num_done, bbox_painter=painter)
+    num_done = predictor(images, outputs, num_done, norm_cfg=meta.norm_cfg, bbox_painter=painter)
 
     if num_done > 20:
         break

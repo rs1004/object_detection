@@ -263,15 +263,22 @@ class SSD(nn.Module):
 
         return params
 
-    def inference(self, images: torch.Tensor, outputs: tuple, num_done: int, bbox_painter, conf_thresh: float = 0.3) -> int:
+    def inference(self, images: torch.Tensor, outputs: tuple, num_done: int, norm_cfg: dict,
+                  bbox_painter, conf_thresh: float = 0.3) -> int:
         out_locs, out_confs = outputs
         out_confs = nn.functional.softmax(out_confs, dim=-1)
+        H, W = images.shape[2:]
+
+        # De Normalize
+        device = images.device
+        mean = torch.tensor(norm_cfg['mean']).reshape(1, 3, 1, 1).to(device)
+        std = torch.tensor(norm_cfg['std']).reshape(1, 3, 1, 1).to(device)
+        images = images * std + mean
 
         # to CPU
         images = images.detach().cpu()
         out_locs = out_locs.detach().cpu()
         out_confs = out_confs.detach().cpu()
-        H, W = images.shape[2:]
 
         for image, out_loc, out_conf in zip(images, out_locs, out_confs):
 
