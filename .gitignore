@@ -4,7 +4,6 @@ DEV
 __pycache__
 .ipynb*
 memo*
-*.png
 
 data
 result

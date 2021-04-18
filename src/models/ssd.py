@@ -346,3 +346,14 @@ if __name__ == '__main__':
     labels = [torch.randint(0, 20, (5,)) for _ in range(4)]
 
     print(model.loss(outputs, bboxes, labels))
+
+    from PIL import Image, ImageDraw
+    from tqdm import tqdm
+    images = []
+    for cx, cy, w, h in tqdm(model.dbox * 300):
+        image = Image.fromarray(torch.zeros((300, 300, 3)).numpy().astype('uint8'))
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((int(cx - w/2), int(cy - h/2), int(cx + w/2), int(cy + h/2)), outline=(255, 255, 255), width=2)
+        images.append(image.copy())
+    images[0].save('./demo/dbox.gif', save_all=True, append_images=images[1:])
+    images[0].save('./demo/dbox_fast.gif', save_all=True, append_images=images[::12])

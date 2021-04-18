@@ -44,11 +44,15 @@ if __name__ == '__main__':
     from PIL import Image, ImageDraw
 
     size = 300
-    ds = DetectionDataset('/home/sato/work/object_detection/data/voc', input_size=size, fmt='xyxy', phase='train')
+    norm_cfg = {
+        'mean': [0.485, 0.456, 0.406],
+        'std': [0.229, 0.224, 0.225]
+    }
+    ds = DetectionDataset('/home/sato/work/object_detection/data/voc', input_size=size, norm_cfg=norm_cfg, fmt='xyxy', phase='train')
     image, bbox, label = ds.__getitem__(0)
     image = Image.fromarray((image.permute(1, 2, 0) * 255).numpy().astype('uint8'))
     draw = ImageDraw.Draw(image)
     for xmin, ymin, xmax, ymax in bbox:
         draw.rectangle((int(xmin * size), int(ymin * size), int(xmax * size), int(ymax * size)), outline=(255, 255, 255), width=3)
 
-    image.save('a.png')
+    image.save('./demo/transformed.png')
