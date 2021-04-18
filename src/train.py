@@ -8,7 +8,7 @@ from torch.optim.lr_scheduler import MultiStepLR
 from torch.utils.tensorboard import SummaryWriter
 from models import SSD
 from pathlib import Path
-from torchinfo import summary
+from torchsummary import summary
 from tqdm import tqdm
 from collections import defaultdict
 
@@ -55,6 +55,7 @@ for phase in ['train', 'val']:
     dataset = DetectionDataset(
         data_dir=data_dir,
         input_size=args.input_size,
+        norm_cfg=meta.norm_cfg,
         phase=phase
     )
 
@@ -101,7 +102,7 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 - {model.__class__.__name__}{args.input_size}
 
 [MODEL SUMMARY]
-{summary(model, (args.batch_size, 3, args.input_size, args.input_size), verbose=1)}
+{summary(model, (3, args.input_size, args.input_size))}
 
 [OPTIMIZER]
 - {optimizer.__class__.__name__}

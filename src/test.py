@@ -33,7 +33,7 @@ dataset = DetectionDataset(
     data_dir=data_dir,
     input_size=args.input_size,
     norm_cfg=meta.norm_cfg,
-    phase='train'
+    phase='val'
 )
 
 dataloader = DataLoader(
