@@ -3,7 +3,7 @@ import torch.nn as nn
 from torchvision.models import vgg16_bn
 from collections import Counter
 from itertools import product
-from torchvision.ops import box_iou, box_convert
+from torchvision.ops import box_iou, box_convert, batched_nms
 from models.layers import ConvBlock, L2Norm
 
 
@@ -264,7 +264,7 @@ class SSD(nn.Module):
         return params
 
     def inference(self, images: torch.Tensor, outputs: tuple, num_done: int, norm_cfg: dict,
-                  bbox_painter, conf_thresh: float = 0.3) -> int:
+                  bbox_painter, top_k: int = 200, iou_thresh: float = 0.45) -> int:
         out_locs, out_confs = outputs
         out_confs = nn.functional.softmax(out_confs, dim=-1)
         H, W = images.shape[2:]
@@ -284,11 +284,18 @@ class SSD(nn.Module):
 
             # 座標・クラスの復元
             conf, class_id = out_conf[:, 1:].max(dim=-1)  # 0 is background class
-            valid_ids = (conf >= conf_thresh).nonzero().reshape(-1)
+            valid_ids = conf.topk(k=top_k).indices
             bbox_valid = self._calc_coord(dbbox=out_loc[valid_ids], dbox=self.dbox[valid_ids])
             bbox_valid = box_convert(bbox_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])
             class_id_valid = class_id[valid_ids]
             conf_valid = conf[valid_ids]
+
+            # 重複の除去（non-maximum supression）
+            keep = batched_nms(bbox_valid, conf_valid, class_id_valid, iou_threshold=iou_thresh)
+            bbox_valid = bbox_valid[keep]
+            conf_valid = conf_valid[keep]
+            class_id_valid = class_id_valid[keep]
+
             for bbox, class_id, conf in zip(bbox_valid, class_id_valid, conf_valid):
                 image = bbox_painter.draw_bbox(
                     image=image,

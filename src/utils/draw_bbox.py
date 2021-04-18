@@ -11,13 +11,13 @@ class BBoxPainter:
         self.palette = [tuple([int(i * 255) for i in c]) for c in sns.color_palette('hls', n_colors=len(classes))]
 
     def draw_bbox(self, image: torch.Tensor or Image, coord: torch.Tensor, class_id: torch.Tensor, conf: torch.Tensor) -> Image:
-        """[summary]
+        """ BBox を描画する
 
         Args:
-            image (torch.TensororImage): [description]
-            coord (torch.Tensor): [description]
-            class_id (torch.Tensor): [description]
-            conf (torch.Tensor): [description]
+            image (torch.Tensor or Image): 画像データ
+            coord (torch.Tensor): BBox 座標データ（fmt: [xmin, ymin, xmax, ymax], pixel 座標）
+            class_id (torch.Tensor): BBox クラスデータ
+            conf (torch.Tensor): BBox 信頼度
 
         Returns:
             Image: [description]
@@ -35,7 +35,14 @@ class BBoxPainter:
 
         return image
 
-    def save(self, image: Image, file_name: str, imsize: tuple = (600, 400)):
+    def save(self, image: torch.Tensor or Image, file_name: str, imsize: tuple = (600, 400)):
+        """ 画像の保存を行う
+
+        Args:
+            image (torch.Tensor or Image): 画像データ
+            file_name (str): ファイル名
+            imsize (tuple, optional): リサイズして保存する. Defaults to (600, 400).
+        """
         if isinstance(image, torch.Tensor):
             image = self._to_pil_image(image)
 
