@@ -205,7 +205,7 @@ class SSD(nn.Module):
             label = label[indices] + 1
             label[neg_ids] = 0
             sce = self._softmax_cross_entropy(out_conf, label)
-            loss_conf += (1 / N) * (sce[pos_ids].sum() + sce[neg_ids].top_k(k=int(N * 3)).values.sum())
+            loss_conf += (1 / N) * (sce[pos_ids].sum() + sce[neg_ids].topk(k=int(N * 3)).values.sum())
 
         # [Step 4]
         #   損失の和を計算する
@@ -241,11 +241,11 @@ class SSD(nn.Module):
     def _softmax_cross_entropy(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return -nn.functional.log_softmax(pred, dim=-1)[range(len(target)), target]
 
-    def get_parameters(self, lrs: dict = {'features': 0.0001, '': 0.001}) -> list:
+    def get_parameters(self, lrs: dict = {'features': 0.0001, '_': 0.001}) -> list:
         """ 学習パラメータと学習率の一覧を取得する
 
         Args:
-            lrs (dict, optional): 学習率の一覧. Defaults to {'features': 0.0001, '': 0.001}.
+            lrs (dict, optional): 学習率の一覧. Defaults to {'features': 0.0001, '_': 0.001}.
 
         Returns:
             list: 学習パラメータと学習率の一覧
@@ -254,10 +254,15 @@ class SSD(nn.Module):
 
         for name, param in self.named_parameters():
             for key in sorted(lrs.keys(), reverse=True):
-                if key in name:
-                    params_to_update[key].append(param)
+                if key in name or key == '_':
+                    if lrs[key] > 0:
+                        params_to_update[key].append(param)
+                    else:
+                        param.requires_grad = False
                     break
 
+        if lrs['_'] == 0:
+            del lrs['_']
         params = [{'params': params_to_update[key], 'lr': lrs[key]} for key in lrs.keys()]
 
         return params
