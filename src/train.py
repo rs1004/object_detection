@@ -5,6 +5,7 @@ from datasets import DetectionDataset, MetaData
 from torch.utils.data import DataLoader
 from torch.optim import SGD
 from torch.optim.lr_scheduler import MultiStepLR
+from tensorboard.backend.event_processing import event_accumulator
 from torch.utils.tensorboard import SummaryWriter
 from models import SSD
 from pathlib import Path
@@ -37,6 +38,7 @@ parser.add_argument('--batch_size', help='batch size of loaded data', type=int, 
 parser.add_argument('--input_size', help='input image size to model', type=int, default=300)
 parser.add_argument('--epochs', help='number of epochs', type=int, default=50)
 parser.add_argument('--version', help='used for output directory name', default='ssd_voc')
+parser.add_argument('--resume', help='set when resuming interrupted learning', action='store_true')
 
 args = parser.parse_args()
 # --------------------------------------------------
@@ -44,10 +46,33 @@ args = parser.parse_args()
 data_dir = f'./data/{args.data_name}'
 meta = MetaData(data_dir=data_dir)
 
+# 実行準備
 log_dir = Path(args.out_dir) / args.version / 'logs'
 weights_dir = Path(args.out_dir) / args.version / 'weights'
-for d in [log_dir, weights_dir]:
-    rmtree(d, ignore_errors=True)
+initial_epoch = 1
+if args.resume:
+    for log_path in log_dir.glob('**/events.out.*'):
+        ea = event_accumulator.EventAccumulator(log_path.as_posix())
+        ea.Reload()
+        if 'loss/train' in ea.Tags()['scalars']:
+            initial_epoch = max(event.step for event in ea.Scalars('loss/train')) + 1
+else:
+    for d in [log_dir, weights_dir]:
+        if d.exists():
+            c = 0
+            while True:
+                print(f'{d} exists. Do you really want to erase it ?')
+                print('[Y]: OK, [N]: No. Exit Process.')
+                answer = input()
+                if answer == 'Y':
+                    rmtree(d, ignore_errors=True)
+                elif answer == 'N':
+                    raise FileExistsError(f'{d} exists.')
+                else:
+                    print('** Unexpected characters were entered **\n')
+                    c += 1
+                    if c >= 10:
+                        raise ValueError('Unexpected characters were entered many times.')
 
 # データ生成
 dataloaders = {}
@@ -119,7 +144,7 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 ''')
 min_val_loss = 99999
 with SummaryWriter(log_dir=log_dir) as writer:
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(initial_epoch, args.epochs + initial_epoch):
         losses = {'train': defaultdict(lambda: 0), 'val': defaultdict(lambda: 0)}
         counts = {'train': 0, 'val': 0}
         for phase, (images, bboxes, labels) in tqdm(chain(dataloaders), total=sum(len(dl) for dl in dataloaders.values()), desc=f'[Epoch {epoch:3}]'):
