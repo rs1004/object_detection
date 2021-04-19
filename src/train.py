@@ -102,7 +102,7 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 - {model.__class__.__name__}{args.input_size}
 
 [MODEL SUMMARY]
-{summary(model, (3, args.input_size, args.input_size))}
+{str(summary(model, (3, args.input_size, args.input_size), verbose=0))}
 
 [OPTIMIZER]
 - {optimizer.__class__.__name__}
@@ -153,7 +153,7 @@ with SummaryWriter(log_dir=log_dir) as writer:
         # tensor board への書き込み
         for phase in ['train', 'val']:
             for kind in losses[phase].keys():
-                writer.add_scalar(f'loss/{phase}/{kind}', losses[phase][kind], epoch)
+                writer.add_scalar(f'{kind}/{phase}', losses[phase][kind], epoch)
         for i, lr in enumerate(scheduler.get_last_lr(), start=1):
             writer.add_scalar(f'lr/lr_{i}', lr, epoch)
 

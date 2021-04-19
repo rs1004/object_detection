@@ -180,14 +180,15 @@ class SSD(nn.Module):
 
             # [Step 1]
             #   各 Default Box を bbox に対応させ、Positive, Negative の判定を行う
-            #   * max_iou >= 0.5 の場合、Positive Box とみなし、最大 iou の bbox を対応させる
-            #   * max_iou <  0.5 の場合、Negative Box とみなす
-            #   * N := Positive Box の個数。N = 0 ならば Loss = 0 とする（skip する）
+            #   - max_iou >= 0.5 の場合、Positive Box とみなし、最大 iou の bbox を対応させる
+            #   - max_iou <  0.5 の場合、Negative Box とみなす
+            #   - N := Positive Box の個数。N = 0 ならば Loss = 0 とする（skip する）
             bbox_xyxy = box_convert(bbox, in_fmt='cxcywh', out_fmt='xyxy')
             dbox_xyxy = box_convert(dbox, in_fmt='cxcywh', out_fmt='xyxy')
             max_ious, indices = box_iou(dbox_xyxy, bbox_xyxy).max(dim=1)
             pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().reshape(-1), (max_ious < iou_thresh).nonzero().reshape(-1)
             N = len(pos_ids)
+            M = len(neg_ids)
             if N == 0:
                 continue
 
@@ -196,16 +197,17 @@ class SSD(nn.Module):
             bbox_pos = bbox[indices[pos_ids]]
             dbox_pos = dbox[pos_ids]
             dbbox_pos = self._calc_delta(bbox=bbox_pos, dbox=dbox_pos)
-            loss_loc += (1 / N) * self._smooth_l1(out_loc[pos_ids] - dbbox_pos).sum()
+            loss_loc += (1 / N) * nn.functional.smooth_l1_loss(out_loc[pos_ids], dbbox_pos, reduction='sum')
 
             # [Step 3]
             #   Positive / Negative Box に対して、Confidence Loss を計算する
-            #   * Negative Box の label は 0 とする (Positive Box の label を 1 ずらす)
-            #   * Negative Box は Loss の上位 len(pos_ids) * 3 個のみを計算に使用する (Hard Negative Mining)
+            #   - Negative Box の label は 0 とする (Positive Box の label を 1 ずらす)
+            #   - Negative Box は Loss の上位 len(pos_ids) * 3 個のみを計算に使用する (Hard Negative Mining)
+            #     - => (変更) Negative Box も全て計算に使用する。loss は len(neg_ids) で割る
             label = label[indices] + 1
             label[neg_ids] = 0
             sce = self._softmax_cross_entropy(out_conf, label)
-            loss_conf += (1 / N) * (sce[pos_ids].sum() + sce[neg_ids].topk(k=N * 3).values.sum())
+            loss_conf += (1 / N) * sce[pos_ids].sum() + (1 / M) * sce[neg_ids].sum()
 
         # [Step 4]
         #   損失の和を計算する
@@ -236,17 +238,14 @@ class SSD(nn.Module):
         dbbox = torch.stack([db_cx, db_cy, db_w, db_h], dim=1)
         return dbbox
 
-    def _smooth_l1(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.where(x.abs() < 1, 0.5 * x * x, x.abs() - 0.5)
-
     def _softmax_cross_entropy(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return -nn.functional.log_softmax(pred, dim=-1)[range(len(target)), target]
 
-    def get_parameters(self, lrs: dict = {'features': 0.001, '': 0.01}) -> list:
+    def get_parameters(self, lrs: dict = {'features': 0.0001, '': 0.001}) -> list:
         """ 学習パラメータと学習率の一覧を取得する
 
         Args:
-            lrs (dict, optional): 学習率の一覧. Defaults to {'features': 0.001, '': 0.01}.
+            lrs (dict, optional): 学習率の一覧. Defaults to {'features': 0.0001, '': 0.001}.
 
         Returns:
             list: 学習パラメータと学習率の一覧
