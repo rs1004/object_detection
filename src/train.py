@@ -66,6 +66,7 @@ else:
                 answer = input()
                 if answer == 'Y':
                     rmtree(d, ignore_errors=True)
+                    break
                 elif answer == 'N':
                     raise FileExistsError(f'{d} exists.')
                 else:
