@@ -22,7 +22,6 @@ class DataTransform:
                 A.RandomSampleCrop(p=p),
                 A.Resize(input_size=(input_size, input_size)),
                 A.RandomMirror(p=p),
-                A.RandomRotate(p=p),
                 A.ToTensor(),
                 A.Normalize(mean, std)
             ])
