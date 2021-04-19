@@ -188,7 +188,6 @@ class SSD(nn.Module):
             max_ious, indices = box_iou(dbox_xyxy, bbox_xyxy).max(dim=1)
             pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().reshape(-1), (max_ious < iou_thresh).nonzero().reshape(-1)
             N = len(pos_ids)
-            M = len(neg_ids)
             if N == 0:
                 continue
 
@@ -203,11 +202,10 @@ class SSD(nn.Module):
             #   Positive / Negative Box に対して、Confidence Loss を計算する
             #   - Negative Box の label は 0 とする (Positive Box の label を 1 ずらす)
             #   - Negative Box は Loss の上位 len(pos_ids) * 3 個のみを計算に使用する (Hard Negative Mining)
-            #     - => (変更) Negative Box も全て計算に使用する。loss は len(neg_ids) で割る
             label = label[indices] + 1
             label[neg_ids] = 0
             sce = self._softmax_cross_entropy(out_conf, label)
-            loss_conf += (1 / N) * sce[pos_ids].sum() + (1 / M) * sce[neg_ids].sum()
+            loss_conf += (1 / N) * (sce[pos_ids].sum() + sce[neg_ids].top_k(k=int(N * 3)).values.sum())
 
         # [Step 4]
         #   損失の和を計算する
@@ -215,25 +213,27 @@ class SSD(nn.Module):
 
         return {
             'loss': (1 / B) * loss,
-            'loss_loc': (1 / B) * loss_loc,
+            'loss_loc': (1 / B) * alpha * loss_loc,
             'loss_conf': (1 / B) * loss_conf
         }
 
-    def _calc_delta(self, bbox: torch.Tensor, dbox: torch.Tensor, variance: list = [1, 1]) -> torch.Tensor:
+    def _calc_delta(self, bbox: torch.Tensor, dbox: torch.Tensor, std: list = [0.1, 0.2]) -> torch.Tensor:
         """ Δg を算出する
 
         Args:
             bbox (torch.Tensor, [X, 4]): GT BBox
             dbox (torch.Tensor, [X, 4]): Default Box
-            variance (list, optional): 係数. Defaults to [0.1, 0.2].
+            std (list, optional): Δg を全データに対して計算して得られる標準偏差. Δcx, Δcy, Δw, Δh が標準正規分布に従うようにしている.
+                                    第1項が Δcx, Δcy に対する値. 第2項が Δw, Δh に対する値.
+                                    Defaults to [0.1, 0.2]. (TODO: 使用するデータに対し調査して設定する必要がある)
 
         Returns:
             torch.Tensor: [X, 4]
         """
-        db_cx = (1 / variance[0]) * (bbox[:, 0] - dbox[:, 0]) / dbox[:, 2]
-        db_cy = (1 / variance[0]) * (bbox[:, 1] - dbox[:, 1]) / dbox[:, 3]
-        db_w = (1 / variance[1]) * (bbox[:, 2] / dbox[:, 2]).log()
-        db_h = (1 / variance[1]) * (bbox[:, 3] / dbox[:, 3]).log()
+        db_cx = (1 / std[0]) * (bbox[:, 0] - dbox[:, 0]) / dbox[:, 2]
+        db_cy = (1 / std[0]) * (bbox[:, 1] - dbox[:, 1]) / dbox[:, 3]
+        db_w = (1 / std[1]) * (bbox[:, 2] / dbox[:, 2]).log()
+        db_h = (1 / std[1]) * (bbox[:, 3] / dbox[:, 3]).log()
 
         dbbox = torch.stack([db_cx, db_cy, db_w, db_h], dim=1)
         return dbbox
@@ -263,7 +263,7 @@ class SSD(nn.Module):
         return params
 
     def inference(self, images: torch.Tensor, outputs: tuple, num_done: int, norm_cfg: dict,
-                  bbox_painter, top_k: int = 200, iou_thresh: float = 0.45) -> int:
+                  bbox_painter, top_k: int = 30, iou_thresh: float = 0.45) -> int:
         out_locs, out_confs = outputs
         out_confs = nn.functional.softmax(out_confs, dim=-1)
         H, W = images.shape[2:]
@@ -308,21 +308,21 @@ class SSD(nn.Module):
 
         return num_done
 
-    def _calc_coord(self, dbbox: torch.Tensor, dbox: torch.Tensor, variance: list = [1, 1]) -> torch.Tensor:
+    def _calc_coord(self, dbbox: torch.Tensor, dbox: torch.Tensor, std: list = [1, 1]) -> torch.Tensor:
         """ g を算出する
 
         Args:
             dbbox (torch.Tensor, [X, 4]): Offset Prediction
             dbox (torch.Tensor, [X, 4]): Default Box
-            variance (list, optional): 係数. Defaults to [0.1, 0.2].
+            std (list, optional): Δg を全データに対して計算して得られる標準偏差. Defaults to [0.1, 0.2].
 
         Returns:
             torch.Tensor: [X, 4]
         """
-        b_cx = dbox[:, 0] + variance[0] * dbbox[:, 0] * dbox[:, 2]
-        b_cy = dbox[:, 1] + variance[0] * dbbox[:, 1] * dbox[:, 3]
-        b_w = dbox[:, 2] * (variance[1] * dbbox[:, 2]).exp()
-        b_h = dbox[:, 3] * (variance[1] * dbbox[:, 3]).exp()
+        b_cx = dbox[:, 0] + std[0] * dbbox[:, 0] * dbox[:, 2]
+        b_cy = dbox[:, 1] + std[0] * dbbox[:, 1] * dbox[:, 3]
+        b_w = dbox[:, 2] * (std[1] * dbbox[:, 2]).exp()
+        b_h = dbox[:, 3] * (std[1] * dbbox[:, 3]).exp()
 
         bbox = torch.stack([b_cx, b_cy, b_w, b_h], dim=1)
         return bbox

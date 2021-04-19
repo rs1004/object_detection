@@ -14,15 +14,15 @@ class DataTransform:
     """
 
     def __init__(self, input_size: int, mean: tuple, std: tuple, phase: str = 'train'):
-        # r = 0.5
-        # p = 0.5
+        r = 0.5
+        p = 0.5
         if phase == 'train':
             self.data_transform = A.Compose([
-                # A.RandomColorJitter(b_ratio=r, c_ratio=r, s_ratio=r, h_ratio=r),
-                # A.RandomSampleCrop(p=p),
+                A.RandomColorJitter(b_ratio=r, c_ratio=r, s_ratio=r, h_ratio=r),
+                A.RandomSampleCrop(p=p),
                 A.Resize(input_size=(input_size, input_size)),
-                # A.RandomMirror(p=p),
-                # A.RandomRotate(p=p),
+                A.RandomMirror(p=p),
+                A.RandomRotate(p=p),
                 A.ToTensor(),
                 A.Normalize(mean, std)
             ])
