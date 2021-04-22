@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import json
 from torchvision.models import vgg16_bn
 from collections import Counter
 from itertools import product
@@ -312,6 +313,44 @@ class SSD(nn.Module):
             num_done += 1
 
         return num_done
+
+    def detect(self, outputs: tuple, image_metas: list, output_dir, conf_thresh: float = 0.4, iou_thresh: float = 0.45):
+        out_locs, out_confs = outputs
+        out_confs = nn.functional.softmax(out_confs, dim=-1)
+        H, W = images.shape[2:]
+
+        # to CPU
+        out_locs = out_locs.detach().cpu()
+        out_confs = out_confs.detach().cpu()
+
+        for image_meta, out_loc, out_conf in zip(image_metas, out_locs, out_confs):
+
+            # 座標・クラスの復元
+            confs, class_ids = out_conf[:, 1:].max(dim=-1)  # 0 is background class
+            valid_ids = confs.gt(conf_thresh).indices
+            bboxes_valid = self._calc_coord(dbboxes=out_loc[valid_ids], dboxes=self.dboxes[valid_ids])
+            bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])
+            class_ids_valid = class_ids[valid_ids]
+            confs_valid = confs[valid_ids]
+
+            # 重複の除去（non-maximum supression）
+            keep = batched_nms(bboxes_valid, confs_valid, class_ids_valid, iou_threshold=iou_thresh)
+            bboxes_valid = box_convert(bboxes_valid[keep], in_fmt='xyxy', out_fmt='xywh')
+            confs_valid = confs_valid[keep]
+            class_ids_valid = class_ids_valid[keep]
+
+            result = []
+            for bbox, class_id, conf in zip(bboxes_valid, class_ids_valid, confs_valid):
+                res = {
+                    'image_id': image_meta['id'],
+                    'category_id': int(class_id),
+                    'bbox': bbox.numpy().tolist(),
+                    'score': float(conf),
+                }
+                result.append(res)
+
+            with open(output_dir / f"{image_meta['id']:08}.json", 'r') as f:
+                json.dump(result, f)
 
     def _calc_coord(self, dbboxes: torch.Tensor, dboxes: torch.Tensor, std: list = [0.1, 0.2]) -> torch.Tensor:
         """ g を算出する

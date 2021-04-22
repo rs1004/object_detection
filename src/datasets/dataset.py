@@ -45,7 +45,7 @@ class DetectionDataset(Dataset):
 
         # read meta
         image_meta = {
-            'file_path': image_path,
+            'image_id': image_meta['id'],
             'height': image_meta['height'],
             'width': image_meta['width']
         }

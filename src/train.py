@@ -1,5 +1,6 @@
 import argparse
 import torch
+import json
 from shutil import rmtree
 from datasets import DetectionDataset, MetaData
 from torch.utils.data import DataLoader
@@ -12,6 +13,8 @@ from pathlib import Path
 from torchsummary import summary
 from tqdm import tqdm
 from collections import defaultdict
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
 
 
 def chain(loaders: dict) -> tuple:
@@ -49,6 +52,7 @@ meta = MetaData(data_dir=data_dir)
 # 実行準備
 log_dir = Path(args.out_dir) / args.version / 'logs'
 weights_dir = Path(args.out_dir) / args.version / 'weights'
+interim_dir = Path(args.out_dir) / args.version / 'interim'
 initial_epoch = 1
 if args.resume:
     for log_path in log_dir.glob('**/events.out.*'):
@@ -57,7 +61,7 @@ if args.resume:
         if 'loss/train' in ea.Tags()['scalars']:
             initial_epoch = max(event.step for event in ea.Scalars('loss/train')) + 1
 else:
-    for d in [log_dir, weights_dir]:
+    for d in [log_dir, weights_dir, interim_dir]:
         rmtree(d, ignore_errors=True)
 
 # データ生成
@@ -91,6 +95,9 @@ model.to(device)
 criterion = model.loss
 optimizer = SGD(params=model.get_parameters(), lr=0.001, momentum=0.9, weight_decay=0.0005)
 scheduler = MultiStepLR(optimizer, milestones=[int(args.epochs * 0.5), int(args.epochs * 0.75)])
+
+# 推論
+detector = model.detect
 
 torch.backends.cudnn.benchmark = True
 
@@ -156,6 +163,8 @@ with SummaryWriter(log_dir=log_dir) as writer:
             if phase == 'train':
                 loss['loss'].backward()
                 optimizer.step()
+            else:
+                detector(outputs, image_metas, interim_dir)
 
             for kind in loss.keys():
                 losses[phase][kind] += loss[kind].item() * images.size(0)
@@ -164,6 +173,22 @@ with SummaryWriter(log_dir=log_dir) as writer:
         for phase in ['train', 'val']:
             for kind in losses[phase].keys():
                 losses[phase][kind] /= counts[phase]
+
+        # 評価
+        result = []
+        for path in interim_dir.glob('**/*.json'):
+            with open(path, 'r') as f:
+                res = json.load(f)
+            result.append(res)
+        with open(interim_dir / 'instances_val.json', 'r') as f:
+            json.dump(result, f)
+
+        cocoGt = COCO((Path(data_dir) / 'annotations' / 'instances_val.json').as_posix())
+        cocoDt = cocoGt.loadRes(interim_dir / 'instances_val.json')
+        cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
+        cocoEval.evaluate()
+        cocoEval.accumulate()
+        cocoEval.summarize()
 
         # tensor board への書き込み
         for phase in ['train', 'val']:
