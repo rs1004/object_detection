@@ -4,6 +4,7 @@ DEV
 __pycache__
 .ipynb*
 memo*
+*.json
 
 data
 result
