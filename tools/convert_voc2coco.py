@@ -43,7 +43,8 @@ def get_images_and_annotations(phase, dst_dir):
     dst_image_dir = dst_dir / phase
     dst_image_dir.mkdir(parents=True, exist_ok=True)
 
-    id = 1
+    image_id = 1
+    anno_id = 1
     for year in ['2007', '2012']:
         base_dir = data_dir / f'VOC{year}'
         data_list_path = base_dir / 'ImageSets' / 'Main' / f'{phase}.txt'
@@ -61,7 +62,6 @@ def get_images_and_annotations(phase, dst_dir):
             height = int(root.find('size').find('height').text)
             width = int(root.find('size').find('width').text)
 
-            image_id = int(new_file_name)
             images.append({
                 'license': 1,
                 'file_name': f'{new_file_name}.jpg',
@@ -77,21 +77,22 @@ def get_images_and_annotations(phase, dst_dir):
                 category_id = classes.index((obj.find('name').text)) + 1
                 xmin = int(obj.find('bndbox').find('xmin').text) - 1
                 ymin = int(obj.find('bndbox').find('ymin').text) - 1
-                xmax = int(obj.find('bndbox').find('xmax').text)
-                ymax = int(obj.find('bndbox').find('ymax').text)
+                xmax = int(obj.find('bndbox').find('xmax').text) - 1
+                ymax = int(obj.find('bndbox').find('ymax').text) - 1
 
                 x, y, w, h = xmin, ymin, xmax - xmin, ymax - ymin
 
                 annotations.append({
-                    'segmentation': [x, y, x+w, y, x+w, y+h, x, y+h],
+                    'segmentation': [[x, y, x+w, y, x+w, y+h, x, y+h]],
                     'area': float(w * h),
                     'iscrowd': 0,
                     'image_id': image_id,
                     'bbox': [x, y, w, h],
                     'category_id': category_id,
-                    'id': id
+                    'id': anno_id
                 })
-                id += 1
+                anno_id += 1
+            image_id += 1
 
     return images, annotations
 

@@ -200,9 +200,9 @@ class SSD(nn.Module):
 
             # [Step 3]
             #   Positive / Negative Box に対して、Confidence Loss を計算する
-            #   - Negative Box の label は 0 とする (Positive Box の label を 1 ずらす)
+            #   - Negative Box の label は 0 とする
             #   - Negative Box は Loss の上位 len(pos_ids) * 3 個のみを計算に使用する (Hard Negative Mining)
-            label = label[indices] + 1
+            label = label[indices]
             label[neg_ids] = 0
             sce = self._softmax_cross_entropy(out_conf, label)
             loss_conf += (1 / N) * (sce[pos_ids].sum() + sce[neg_ids].topk(k=int(N * 3)).values.sum())
