@@ -63,6 +63,7 @@ if args.resume:
 else:
     for d in [log_dir, weights_dir, interim_dir]:
         rmtree(d, ignore_errors=True)
+        d.mkdir(parents=True)
 
 # データ生成
 dataloaders = {}
@@ -98,6 +99,7 @@ scheduler = MultiStepLR(optimizer, milestones=[int(args.epochs * 0.5), int(args.
 
 # 推論
 detector = model.detect
+eval_interval = 10
 
 torch.backends.cudnn.benchmark = True
 
@@ -163,7 +165,7 @@ with SummaryWriter(log_dir=log_dir) as writer:
             if phase == 'train':
                 loss['loss'].backward()
                 optimizer.step()
-            else:
+            elif epoch % eval_interval == 0:
                 detector(outputs, image_metas, interim_dir)
 
             for kind in loss.keys():
@@ -175,20 +177,24 @@ with SummaryWriter(log_dir=log_dir) as writer:
                 losses[phase][kind] /= counts[phase]
 
         # 評価
-        result = []
-        for path in interim_dir.glob('**/*.json'):
-            with open(path, 'r') as f:
-                res = json.load(f)
-            result.append(res)
-        with open(interim_dir / 'instances_val.json', 'r') as f:
-            json.dump(result, f)
+        if epoch % eval_interval == 0:
+            result = []
+            for path in interim_dir.glob('**/*.json'):
+                with open(path, 'r') as f:
+                    res = json.load(f)
+                result += res
+            if len(result) > 0:
+                with open(interim_dir / 'instances_val.json', 'w') as f:
+                    json.dump(result, f)
 
-        cocoGt = COCO((Path(data_dir) / 'annotations' / 'instances_val.json').as_posix())
-        cocoDt = cocoGt.loadRes(interim_dir / 'instances_val.json')
-        cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
-        cocoEval.evaluate()
-        cocoEval.accumulate()
-        cocoEval.summarize()
+                cocoGt = COCO((Path(data_dir) / 'annotations' / 'instances_val.json').as_posix())
+                cocoDt = cocoGt.loadRes(interim_dir / 'instances_val.json')
+                cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
+                cocoEval.evaluate()
+                cocoEval.accumulate()
+                cocoEval.summarize()
+            else:
+                print('No Object Detected. Skip Evaluation')
 
         # tensor board への書き込み
         for phase in ['train', 'val']:
@@ -202,7 +208,6 @@ with SummaryWriter(log_dir=log_dir) as writer:
 
         # 重みファイル保存
         if losses['val']['loss'] < min_val_loss:
-            weights_dir.mkdir(exist_ok=True, parents=True)
             torch.save(model.state_dict(), weights_dir / 'latest.pth')
             min_val_loss = losses['val']['loss']
 

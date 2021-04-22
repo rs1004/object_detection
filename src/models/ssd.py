@@ -194,10 +194,10 @@ class SSD(nn.Module):
 
             # [Step 2]
             #   Positive Box に対して、 Localization Loss を計算する
-            bbox_pos = bboxes[indices[pos_ids]]
-            dbox_pos = dboxes[pos_ids]
-            dbbox_pos = self._calc_delta(bboxes=bbox_pos, dboxes=dbox_pos)
-            loss_loc += (1 / N) * nn.functional.smooth_l1_loss(out_loc[pos_ids], dbbox_pos, reduction='sum')
+            bboxes_pos = bboxes[indices[pos_ids]]
+            dboxes_pos = dboxes[pos_ids]
+            dbboxes_pos = self._calc_delta(bboxes=bboxes_pos, dboxes=dboxes_pos)
+            loss_loc += (1 / N) * self._smooth_l1(out_loc[pos_ids] - dbboxes_pos)
 
             # [Step 3]
             #   Positive / Negative Box に対して、Confidence Loss を計算する
@@ -238,6 +238,12 @@ class SSD(nn.Module):
 
         dbboxes = torch.stack([db_cx, db_cy, db_w, db_h], dim=1).contiguous()
         return dbboxes
+
+    def _smooth_l1(self, x: torch.Tensor) -> torch.Tensor:
+        if x.abs().sum() < 1:
+            return (0.5 * x ** 2).sum()
+        else:
+            return (x.abs() - 0.5).sum()
 
     def _softmax_cross_entropy(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return -nn.functional.log_softmax(pred, dim=-1)[range(len(target)), target]
@@ -317,7 +323,6 @@ class SSD(nn.Module):
     def detect(self, outputs: tuple, image_metas: list, output_dir, conf_thresh: float = 0.4, iou_thresh: float = 0.45):
         out_locs, out_confs = outputs
         out_confs = nn.functional.softmax(out_confs, dim=-1)
-        H, W = images.shape[2:]
 
         # to CPU
         out_locs = out_locs.detach().cpu()
@@ -326,8 +331,9 @@ class SSD(nn.Module):
         for image_meta, out_loc, out_conf in zip(image_metas, out_locs, out_confs):
 
             # 座標・クラスの復元
+            H, W = image_meta['height'], image_meta['width']
             confs, class_ids = out_conf[:, 1:].max(dim=-1)  # 0 is background class
-            valid_ids = confs.gt(conf_thresh).indices
+            valid_ids = confs.gt(conf_thresh).nonzero().reshape(-1)
             bboxes_valid = self._calc_coord(dbboxes=out_loc[valid_ids], dboxes=self.dboxes[valid_ids])
             bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])
             class_ids_valid = class_ids[valid_ids]
@@ -342,14 +348,14 @@ class SSD(nn.Module):
             result = []
             for bbox, class_id, conf in zip(bboxes_valid, class_ids_valid, confs_valid):
                 res = {
-                    'image_id': image_meta['id'],
+                    'image_id': image_meta['image_id'],
                     'category_id': int(class_id),
                     'bbox': bbox.numpy().tolist(),
                     'score': float(conf),
                 }
                 result.append(res)
 
-            with open(output_dir / f"{image_meta['id']:08}.json", 'r') as f:
+            with open(output_dir / f"{image_meta['image_id']:08}.json", 'w') as f:
                 json.dump(result, f)
 
     def _calc_coord(self, dbboxes: torch.Tensor, dboxes: torch.Tensor, std: list = [0.1, 0.2]) -> torch.Tensor:
