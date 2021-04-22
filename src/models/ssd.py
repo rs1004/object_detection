@@ -61,7 +61,7 @@ class SSD(nn.Module):
             'conv11_2': nn.Conv2d(in_channels=256, out_channels=4 * self.nc, kernel_size=3, padding=1),
         })
 
-        self.dbox = self._get_dbox()
+        self.dboxes = self._get_dboxes()
 
     def forward(self, x):
         batch_size = x.size(0)
@@ -119,7 +119,7 @@ class SSD(nn.Module):
 
         return features
 
-    def _get_dbox(self) -> torch.Tensor:
+    def _get_dboxes(self) -> torch.Tensor:
         """ Default Box を生成する
 
         Returns:
@@ -128,7 +128,7 @@ class SSD(nn.Module):
         def s_(k, m=6, s_min=0.2, s_max=0.9):
             return s_min + (s_max - s_min) * (k - 1) / (m - 1)
 
-        dbox = []
+        dboxes = []
         cfg = [[38, 4], [19, 6], [10, 6], [5, 6], [3, 4], [1, 4]]
 
         for k, (f_k, num_aspects) in enumerate(cfg, start=1):
@@ -142,12 +142,12 @@ class SSD(nn.Module):
                     else:
                         w = s_(k) * pow(a, 0.5)
                         h = s_(k) * pow(1 / a, 0.5)
-                    dbox.append([cx, cy, w, h])
+                    dboxes.append([cx, cy, w, h])
 
-        dbox = torch.tensor(dbox)
-        return dbox
+        dboxes = torch.tensor(dboxes).clamp(min=0.0, max=1.0)
+        return dboxes
 
-    def loss(self, outputs: tuple, bboxes: list, labels: list, iou_thresh: float = 0.5, alpha: float = 1.0) -> dict:
+    def loss(self, outputs: tuple, gt_bboxes: list, gt_labels: list, iou_thresh: float = 0.5, alpha: float = 1.0) -> dict:
         """ 損失関数
 
         Args:
@@ -155,8 +155,8 @@ class SSD(nn.Module):
                             * 予測オフセット : (B, D, 4) (fmt: [Δcx, Δcy, Δw, Δh])
                                     (D: DBoxの数. D = 8732 の想定.)
                             * 予測信頼度     : (B, D, num_classes + 1)
-            bboxes (list): 正解BBOX座標 [(G1, 4), (G2, 4), ...] (fmt: [cx, cy, w, h])
-            labels (list): 正解ラベル [(G1,), (G2,)]
+            gt_bboxes (list): 正解BBOX座標 [(G1, 4), (G2, 4), ...] (fmt: [cx, cy, w, h])
+            gt_labels (list): 正解ラベル [(G1,), (G2,)]
             iou_thresh (float): Potitive / Negative を判定する際の iou の閾値
             alpha (float): loss = loss_conf + α * loss_loc の α
 
@@ -170,22 +170,22 @@ class SSD(nn.Module):
         out_locs, out_confs = outputs
 
         device = out_locs.device
-        dbox = self.dbox.to(device)
+        dboxes = self.dboxes.to(device)
         B = out_locs.size(0)
         loss = loss_loc = loss_conf = 0
-        for out_loc, out_conf, bbox, label in zip(out_locs, out_confs, bboxes, labels):
+        for out_loc, out_conf, bboxes, labels in zip(out_locs, out_confs, gt_bboxes, gt_labels):
             # to GPU
-            bbox = bbox.to(device)
-            label = label.to(device)
+            bboxes = bboxes.to(device)
+            labels = labels.to(device)
 
             # [Step 1]
-            #   各 Default Box を bbox に対応させ、Positive, Negative の判定を行う
-            #   - max_iou >= 0.5 の場合、Positive Box とみなし、最大 iou の bbox を対応させる
+            #   各 Default Box を BBox に対応させ、Positive, Negative の判定を行う
+            #   - max_iou >= 0.5 の場合、Positive Box とみなし、最大 iou の BBox を対応させる
             #   - max_iou <  0.5 の場合、Negative Box とみなす
             #   - N := Positive Box の個数。N = 0 ならば Loss = 0 とする（skip する）
-            bbox_xyxy = box_convert(bbox, in_fmt='cxcywh', out_fmt='xyxy')
-            dbox_xyxy = box_convert(dbox, in_fmt='cxcywh', out_fmt='xyxy')
-            max_ious, indices = box_iou(dbox_xyxy, bbox_xyxy).max(dim=1)
+            bboxes_xyxy = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
+            dboxes_xyxy = box_convert(dboxes, in_fmt='cxcywh', out_fmt='xyxy')
+            max_ious, indices = box_iou(dboxes_xyxy, bboxes_xyxy).max(dim=1)
             pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().reshape(-1), (max_ious < iou_thresh).nonzero().reshape(-1)
             N = len(pos_ids)
             if N == 0:
@@ -193,18 +193,18 @@ class SSD(nn.Module):
 
             # [Step 2]
             #   Positive Box に対して、 Localization Loss を計算する
-            bbox_pos = bbox[indices[pos_ids]]
-            dbox_pos = dbox[pos_ids]
-            dbbox_pos = self._calc_delta(bbox=bbox_pos, dbox=dbox_pos)
+            bbox_pos = bboxes[indices[pos_ids]]
+            dbox_pos = dboxes[pos_ids]
+            dbbox_pos = self._calc_delta(bboxes=bbox_pos, dboxes=dbox_pos)
             loss_loc += (1 / N) * nn.functional.smooth_l1_loss(out_loc[pos_ids], dbbox_pos, reduction='sum')
 
             # [Step 3]
             #   Positive / Negative Box に対して、Confidence Loss を計算する
-            #   - Negative Box の label は 0 とする
+            #   - Negative Box の labels は 0 とする
             #   - Negative Box は Loss の上位 len(pos_ids) * 3 個のみを計算に使用する (Hard Negative Mining)
-            label = label[indices]
-            label[neg_ids] = 0
-            sce = self._softmax_cross_entropy(out_conf, label)
+            labels = labels[indices]
+            labels[neg_ids] = 0
+            sce = self._softmax_cross_entropy(out_conf, labels)
             loss_conf += (1 / N) * (sce[pos_ids].sum() + sce[neg_ids].topk(k=int(N * 3)).values.sum())
 
         # [Step 4]
@@ -217,12 +217,12 @@ class SSD(nn.Module):
             'loss_conf': (1 / B) * loss_conf
         }
 
-    def _calc_delta(self, bbox: torch.Tensor, dbox: torch.Tensor, std: list = [0.1, 0.2]) -> torch.Tensor:
+    def _calc_delta(self, bboxes: torch.Tensor, dboxes: torch.Tensor, std: list = [0.1, 0.2]) -> torch.Tensor:
         """ Δg を算出する
 
         Args:
-            bbox (torch.Tensor, [X, 4]): GT BBox
-            dbox (torch.Tensor, [X, 4]): Default Box
+            bboxes (torch.Tensor, [X, 4]): GT BBox
+            dboxes (torch.Tensor, [X, 4]): Default Box
             std (list, optional): Δg を全データに対して計算して得られる標準偏差. Δcx, Δcy, Δw, Δh が標準正規分布に従うようにしている.
                                     第1項が Δcx, Δcy に対する値. 第2項が Δw, Δh に対する値.
                                     Defaults to [0.1, 0.2]. (TODO: 使用するデータに対し調査して設定する必要がある)
@@ -230,13 +230,13 @@ class SSD(nn.Module):
         Returns:
             torch.Tensor: [X, 4]
         """
-        db_cx = (1 / std[0]) * (bbox[:, 0] - dbox[:, 0]) / dbox[:, 2]
-        db_cy = (1 / std[0]) * (bbox[:, 1] - dbox[:, 1]) / dbox[:, 3]
-        db_w = (1 / std[1]) * (bbox[:, 2] / dbox[:, 2]).log()
-        db_h = (1 / std[1]) * (bbox[:, 3] / dbox[:, 3]).log()
+        db_cx = (1 / std[0]) * (bboxes[:, 0] - dboxes[:, 0]) / dboxes[:, 2]
+        db_cy = (1 / std[0]) * (bboxes[:, 1] - dboxes[:, 1]) / dboxes[:, 3]
+        db_w = (1 / std[1]) * (bboxes[:, 2] / dboxes[:, 2]).log()
+        db_h = (1 / std[1]) * (bboxes[:, 3] / dboxes[:, 3]).log()
 
-        dbbox = torch.stack([db_cx, db_cy, db_w, db_h], dim=1)
-        return dbbox
+        dbboxes = torch.stack([db_cx, db_cy, db_w, db_h], dim=1).contiguous()
+        return dbboxes
 
     def _softmax_cross_entropy(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return -nn.functional.log_softmax(pred, dim=-1)[range(len(target)), target]
@@ -287,20 +287,20 @@ class SSD(nn.Module):
         for image, out_loc, out_conf in zip(images, out_locs, out_confs):
 
             # 座標・クラスの復元
-            conf, class_id = out_conf[:, 1:].max(dim=-1)  # 0 is background class
-            valid_ids = conf.topk(k=top_k).indices
-            bbox_valid = self._calc_coord(dbbox=out_loc[valid_ids], dbox=self.dbox[valid_ids])
-            bbox_valid = box_convert(bbox_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])
-            class_id_valid = class_id[valid_ids]
-            conf_valid = conf[valid_ids]
+            confs, class_ids = out_conf[:, 1:].max(dim=-1)  # 0 is background class
+            valid_ids = confs.topk(k=top_k).indices
+            bboxes_valid = self._calc_coord(dbboxes=out_loc[valid_ids], dboxes=self.dboxes[valid_ids])
+            bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])
+            class_ids_valid = class_ids[valid_ids]
+            confs_valid = confs[valid_ids]
 
             # 重複の除去（non-maximum supression）
-            keep = batched_nms(bbox_valid, conf_valid, class_id_valid, iou_threshold=iou_thresh)
-            bbox_valid = bbox_valid[keep]
-            conf_valid = conf_valid[keep]
-            class_id_valid = class_id_valid[keep]
+            keep = batched_nms(bboxes_valid, confs_valid, class_ids_valid, iou_threshold=iou_thresh)
+            bboxes_valid = bboxes_valid[keep]
+            confs_valid = confs_valid[keep]
+            class_ids_valid = class_ids_valid[keep]
 
-            for bbox, class_id, conf in zip(bbox_valid, class_id_valid, conf_valid):
+            for bbox, class_id, conf in zip(bboxes_valid, class_ids_valid, confs_valid):
                 image = bbox_painter.draw_bbox(
                     image=image,
                     coord=bbox,
@@ -313,24 +313,24 @@ class SSD(nn.Module):
 
         return num_done
 
-    def _calc_coord(self, dbbox: torch.Tensor, dbox: torch.Tensor, std: list = [1, 1]) -> torch.Tensor:
+    def _calc_coord(self, dbboxes: torch.Tensor, dboxes: torch.Tensor, std: list = [0.1, 0.2]) -> torch.Tensor:
         """ g を算出する
 
         Args:
-            dbbox (torch.Tensor, [X, 4]): Offset Prediction
-            dbox (torch.Tensor, [X, 4]): Default Box
+            dbboxes (torch.Tensor, [X, 4]): Offset Prediction
+            dboxes (torch.Tensor, [X, 4]): Default Box
             std (list, optional): Δg を全データに対して計算して得られる標準偏差. Defaults to [0.1, 0.2].
 
         Returns:
             torch.Tensor: [X, 4]
         """
-        b_cx = dbox[:, 0] + std[0] * dbbox[:, 0] * dbox[:, 2]
-        b_cy = dbox[:, 1] + std[0] * dbbox[:, 1] * dbox[:, 3]
-        b_w = dbox[:, 2] * (std[1] * dbbox[:, 2]).exp()
-        b_h = dbox[:, 3] * (std[1] * dbbox[:, 3]).exp()
+        b_cx = dboxes[:, 0] + std[0] * dbboxes[:, 0] * dboxes[:, 2]
+        b_cy = dboxes[:, 1] + std[0] * dbboxes[:, 1] * dboxes[:, 3]
+        b_w = dboxes[:, 2] * (std[1] * dbboxes[:, 2]).exp()
+        b_h = dboxes[:, 3] * (std[1] * dbboxes[:, 3]).exp()
 
-        bbox = torch.stack([b_cx, b_cy, b_w, b_h], dim=1)
-        return bbox
+        bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1).contiguous()
+        return bboxes
 
 
 if __name__ == '__main__':
@@ -340,24 +340,24 @@ if __name__ == '__main__':
     model = SSD(num_classes=20, pretrained=False)
     outputs = model(x)
     print(outputs[0].shape, outputs[1].shape)
-    for coord in model.dbox:
+    for coord in model.dboxes:
         print(coord)
 
     out_locs = torch.rand(4, 8732, 4)
     out_confs = torch.rand(4, 8732, 21)
     outputs = (out_locs, out_confs)
-    bboxes = [torch.rand(5, 4) for _ in range(4)]
-    labels = [torch.randint(0, 20, (5,)) for _ in range(4)]
+    gt_bboxes = [torch.rand(5, 4) for _ in range(4)]
+    gt_labels = [torch.randint(0, 20, (5,)) for _ in range(4)]
 
-    print(model.loss(outputs, bboxes, labels))
+    print(model.loss(outputs, gt_bboxes, gt_labels))
 
     from PIL import Image, ImageDraw
     from tqdm import tqdm
     images = []
-    for cx, cy, w, h in tqdm(model.dbox * 300):
+    for cx, cy, w, h in tqdm(model.dboxes * 300):
         image = Image.fromarray(torch.zeros((300, 300, 3)).numpy().astype('uint8'))
         draw = ImageDraw.Draw(image)
         draw.rectangle((int(cx - w/2), int(cy - h/2), int(cx + w/2), int(cy + h/2)), outline=(255, 255, 255), width=2)
         images.append(image.copy())
-    images[0].save('./demo/dbox.gif', save_all=True, append_images=images[1:])
-    images[0].save('./demo/dbox_fast.gif', save_all=True, append_images=images[::12])
+    images[0].save('./demo/dboxes.gif', save_all=True, append_images=images[1:])
+    images[0].save('./demo/dboxes_fast.gif', save_all=True, append_images=images[::12])

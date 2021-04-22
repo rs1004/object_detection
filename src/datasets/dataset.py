@@ -89,15 +89,17 @@ class DetectionDataset(Dataset):
 
     def collate_fn(self, batch: tuple):
         images = []
-        bboxes = []
-        labels = []
-        for image, bbox, label in batch:
+        image_metas = []
+        gt_bboxes = []
+        gt_labels = []
+        for image, image_meta, bboxes, labels in batch:
             images.append(image)
-            bboxes.append(bbox)
-            labels.append(label)
+            image_metas.append(image_meta)
+            gt_bboxes.append(bboxes)
+            gt_labels.append(labels)
         images = torch.stack(images, dim=0)
 
-        return images, bboxes, labels
+        return images, image_metas, gt_bboxes, gt_labels
 
 
 if __name__ == '__main__':

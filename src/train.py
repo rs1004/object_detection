@@ -58,22 +58,7 @@ if args.resume:
             initial_epoch = max(event.step for event in ea.Scalars('loss/train')) + 1
 else:
     for d in [log_dir, weights_dir]:
-        if d.exists():
-            c = 0
-            while True:
-                print(f'{d} exists. Do you really want to erase it ?')
-                print('[Y]: OK, [N]: No. Exit Process.')
-                answer = input()
-                if answer == 'Y':
-                    rmtree(d, ignore_errors=True)
-                    break
-                elif answer == 'N':
-                    raise FileExistsError(f'{d} exists.')
-                else:
-                    print('** Unexpected characters were entered **\n')
-                    c += 1
-                    if c >= 10:
-                        raise ValueError('Unexpected characters were entered many times.')
+        rmtree(d, ignore_errors=True)
 
 # データ生成
 dataloaders = {}
@@ -148,7 +133,11 @@ with SummaryWriter(log_dir=log_dir) as writer:
     for epoch in range(initial_epoch, args.epochs + initial_epoch):
         losses = {'train': defaultdict(lambda: 0), 'val': defaultdict(lambda: 0)}
         counts = {'train': 0, 'val': 0}
-        for phase, (images, bboxes, labels) in tqdm(chain(dataloaders), total=sum(len(dl) for dl in dataloaders.values()), desc=f'[Epoch {epoch:3}]'):
+        for phase, (images, image_metas, gt_bboxes, gt_labels) in tqdm(
+                chain(dataloaders),
+                total=sum(len(dl) for dl in dataloaders.values()),
+                desc=f'[Epoch {epoch:3}]'):
+
             if phase == 'train':
                 model.train()
                 optimizer.zero_grad()
@@ -162,7 +151,7 @@ with SummaryWriter(log_dir=log_dir) as writer:
 
             # forward + backward + optimize
             outputs = model(images)
-            loss = criterion(outputs, bboxes, labels)
+            loss = criterion(outputs, gt_bboxes, gt_labels)
 
             if phase == 'train':
                 loss['loss'].backward()
