@@ -14,12 +14,12 @@ class SSD(nn.Module):
         self.nc = num_classes + 1  # add background class
 
         if pretrained_weights:
-            bb = vgg16_bn(pretrained=False)
-            bb.load_state_dict(torch.load(pretrained_weights))
+            backborn = vgg16_bn(pretrained=False)
+            backborn.load_state_dict(torch.load(pretrained_weights))
         else:
-            bb = vgg16_bn(pretrained=pretrained)
+            backborn = vgg16_bn(pretrained=pretrained)
 
-        self.features = self._parse_features(bb.features[:-1])
+        self.features = self._trace_features(backborn.features[:-1])
 
         self.extras = nn.ModuleDict([
             ('conv6_1', ConvBlock(512, 1024, kernel_size=3, padding=1)),
@@ -64,6 +64,19 @@ class SSD(nn.Module):
 
         self.dboxes = self._get_dboxes()
 
+        self.init_weights()
+
+    def init_weights(self):
+        # 重み初期化
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                # He の初期化
+                # [memo] sigmoid, tanh を使う場合はXavierの初期値, Relu を使用する場合は He の初期値を使用する
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
     def forward(self, x):
         batch_size = x.size(0)
         out_locs = []
@@ -83,8 +96,8 @@ class SSD(nn.Module):
         out_locs, out_confs = torch.cat(out_locs, dim=1), torch.cat(out_confs, dim=1)
         return out_locs, out_confs
 
-    def _parse_features(self, vgg_features: nn.Sequential) -> nn.ModuleDict:
-        """ torchvision の VGG16 モデルの特徴抽出層を ConvBlock にパースする
+    def _trace_features(self, vgg_features: nn.Sequential) -> nn.ModuleDict:
+        """ torchvision の VGG16 モデルの特徴抽出層を ConvBlock にトレースする
 
         Args:
             vgg_features (nn.Sequential): features of vgg16
@@ -174,7 +187,7 @@ class SSD(nn.Module):
         dboxes = self.dboxes.to(device)
         B = out_locs.size(0)
         loss = loss_loc = loss_conf = 0
-        for out_loc, out_conf, bboxes, labels in zip(out_locs, out_confs, gt_bboxes, gt_labels):
+        for locs, confs, bboxes, labels in zip(out_locs, out_confs, gt_bboxes, gt_labels):
             # to GPU
             bboxes = bboxes.to(device)
             labels = labels.to(device)
@@ -197,7 +210,7 @@ class SSD(nn.Module):
             bboxes_pos = bboxes[indices[pos_ids]]
             dboxes_pos = dboxes[pos_ids]
             dbboxes_pos = self._calc_delta(bboxes=bboxes_pos, dboxes=dboxes_pos)
-            loss_loc += (1 / N) * self._smooth_l1(out_loc[pos_ids] - dbboxes_pos).sum()
+            loss_loc += (1 / N) * self._smooth_l1(locs[pos_ids] - dbboxes_pos).sum()
 
             # [Step 3]
             #   Positive / Negative Box に対して、Confidence Loss を計算する
@@ -205,7 +218,7 @@ class SSD(nn.Module):
             #   - Negative Box は Loss の上位 len(pos_ids) * 3 個のみを計算に使用する (Hard Negative Mining)
             labels = labels[indices]
             labels[neg_ids] = 0
-            sce = self._softmax_cross_entropy(out_conf, labels)
+            sce = self._softmax_cross_entropy(confs, labels)
             loss_conf += (1 / N) * (sce[pos_ids].sum() + sce[neg_ids].topk(k=int(N * 3)).values.sum())
 
         # [Step 4]
@@ -265,8 +278,7 @@ class SSD(nn.Module):
                         param.requires_grad = False
                     break
 
-        if lrs['_'] == 0:
-            del lrs['_']
+        lrs = {k: lr for k, lr in lrs.items() if lr > 0}
         params = [{'params': params_to_update[key], 'lr': lrs[key]} for key in lrs.keys()]
 
         return params
@@ -288,12 +300,12 @@ class SSD(nn.Module):
         out_locs = out_locs.detach().cpu()
         out_confs = out_confs.detach().cpu()
 
-        for image, out_loc, out_conf in zip(images, out_locs, out_confs):
+        for image, locs, confs in zip(images, out_locs, out_confs):
 
             # 座標・クラスの復元
-            confs, class_ids = out_conf[:, 1:].max(dim=-1)  # 0 is background class
+            confs, class_ids = confs[:, 1:].max(dim=-1)  # 0 is background class
             valid_ids = confs.topk(k=top_k).indices
-            bboxes_valid = self._calc_coord(dbboxes=out_loc[valid_ids], dboxes=self.dboxes[valid_ids])
+            bboxes_valid = self._calc_coord(dbboxes=locs[valid_ids], dboxes=self.dboxes[valid_ids])
             bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])
             class_ids_valid = class_ids[valid_ids]
             confs_valid = confs[valid_ids]
@@ -325,13 +337,13 @@ class SSD(nn.Module):
         out_locs = out_locs.detach().cpu()
         out_confs = out_confs.detach().cpu()
 
-        for image_meta, out_loc, out_conf in zip(image_metas, out_locs, out_confs):
+        for image_meta, locs, confs in zip(image_metas, out_locs, out_confs):
 
             # 座標・クラスの復元
             H, W = image_meta['height'], image_meta['width']
-            confs, class_ids = out_conf[:, 1:].max(dim=-1)  # 0 is background class
+            confs, class_ids = confs[:, 1:].max(dim=-1)  # 0 is background class
             valid_ids = confs.gt(conf_thresh).nonzero().reshape(-1)
-            bboxes_valid = self._calc_coord(dbboxes=out_loc[valid_ids], dboxes=self.dboxes[valid_ids])
+            bboxes_valid = self._calc_coord(dbboxes=locs[valid_ids], dboxes=self.dboxes[valid_ids])
             bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])
             class_ids_valid = class_ids[valid_ids]
             confs_valid = confs[valid_ids]

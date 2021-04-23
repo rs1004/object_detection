@@ -74,6 +74,9 @@ def get_images_and_annotations(phase, dst_dir):
             })
 
             for obj in root.iter('object'):
+                if int(obj.find('difficult').text) == 1:
+                    continue
+
                 category_id = classes.index((obj.find('name').text)) + 1
                 xmin = int(obj.find('bndbox').find('xmin').text) - 1
                 ymin = int(obj.find('bndbox').find('ymin').text) - 1
