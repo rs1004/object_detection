@@ -258,7 +258,7 @@ class SSD(nn.Module):
     def _softmax_cross_entropy(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return -nn.functional.log_softmax(pred, dim=-1)[range(len(target)), target]
 
-    def get_parameters(self, lrs: dict = {'features': 0.0001, '_': 0.001}) -> list:
+    def get_parameters(self, lrs: dict = {'features': 0.001, '_': 0.001}) -> list:
         """ 学習パラメータと学習率の一覧を取得する
 
         Args:
