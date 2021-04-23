@@ -197,7 +197,7 @@ class SSD(nn.Module):
             bboxes_pos = bboxes[indices[pos_ids]]
             dboxes_pos = dboxes[pos_ids]
             dbboxes_pos = self._calc_delta(bboxes=bboxes_pos, dboxes=dboxes_pos)
-            loss_loc += (1 / N) * self._smooth_l1(out_loc[pos_ids] - dbboxes_pos)
+            loss_loc += (1 / N) * self._smooth_l1(out_loc[pos_ids] - dbboxes_pos).sum()
 
             # [Step 3]
             #   Positive / Negative Box に対して、Confidence Loss を計算する
@@ -240,10 +240,7 @@ class SSD(nn.Module):
         return dbboxes
 
     def _smooth_l1(self, x: torch.Tensor) -> torch.Tensor:
-        if x.abs().sum() < 1:
-            return (0.5 * x ** 2).sum()
-        else:
-            return (x.abs() - 0.5).sum()
+        return torch.where(x.abs() < 1, 0.5 * x ** 2, x.abs() - 0.5)
 
     def _softmax_cross_entropy(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return -nn.functional.log_softmax(pred, dim=-1)[range(len(target)), target]
