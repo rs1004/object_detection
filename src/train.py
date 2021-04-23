@@ -122,7 +122,7 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 - {model.__class__.__name__}{args.input_size}
 
 [MODEL SUMMARY]
-{str(summary(model, (3, args.input_size, args.input_size), verbose=0))}
+{str(summary(model, (3, args.input_size, args.input_size), verbose=0, depth=2))}
 
 [OPTIMIZER]
 - {optimizer.__class__.__name__}
@@ -176,6 +176,16 @@ with SummaryWriter(log_dir=log_dir) as writer:
             for kind in losses[phase].keys():
                 losses[phase][kind] /= counts[phase]
 
+        # tensor board への書き込み
+        for phase in ['train', 'val']:
+            for kind in losses[phase].keys():
+                writer.add_scalar(f'{kind}/{phase}', losses[phase][kind], epoch)
+        for i, lr in enumerate(scheduler.get_last_lr(), start=1):
+            writer.add_scalar(f'lr/lr_{i}', lr, epoch)
+
+        print(f'  loss     : {losses["train"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["train"].items()])})')
+        print(f'  val_loss : {losses["val"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["val"].items()])})')
+
         # 評価
         if epoch % eval_interval == 0:
             result = []
@@ -188,23 +198,13 @@ with SummaryWriter(log_dir=log_dir) as writer:
                     json.dump(result, f)
 
                 cocoGt = COCO((Path(data_dir) / 'annotations' / 'instances_val.json').as_posix())
-                cocoDt = cocoGt.loadRes(interim_dir / 'instances_val.json')
+                cocoDt = cocoGt.loadRes((interim_dir / 'instances_val.json').as_posix())
                 cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
                 cocoEval.evaluate()
                 cocoEval.accumulate()
                 cocoEval.summarize()
             else:
                 print('No Object Detected. Skip Evaluation')
-
-        # tensor board への書き込み
-        for phase in ['train', 'val']:
-            for kind in losses[phase].keys():
-                writer.add_scalar(f'{kind}/{phase}', losses[phase][kind], epoch)
-        for i, lr in enumerate(scheduler.get_last_lr(), start=1):
-            writer.add_scalar(f'lr/lr_{i}', lr, epoch)
-
-        print(f'  loss     : {losses["train"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["train"].items()])})')
-        print(f'  val_loss : {losses["val"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["val"].items()])})')
 
         # 重みファイル保存
         if losses['val']['loss'] < min_val_loss:
