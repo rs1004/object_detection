@@ -81,17 +81,11 @@ class SSD(nn.Module):
         batch_size = x.size(0)
         out_locs = []
         out_confs = []
-        for name, m in self.features.items():
+        for name, m in list(self.features.items()) + list(self.extras.items()):
             x = m(x)
             if name in self.localizers:
-                out_locs.append(self.localizers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, 4))
-                out_confs.append(self.classifiers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, self.nc))
-
-        for name, m in self.extras.items():
-            x = m(x)
-            if name in self.localizers:
-                out_locs.append(self.localizers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, 4))
-                out_confs.append(self.classifiers[name](x).permute(0, 2, 3, 1).reshape(batch_size, -1, self.nc))
+                out_locs.append(self.localizers[name](x).permute(0, 2, 3, 1).contiguous().view(batch_size, -1, 4))
+                out_confs.append(self.classifiers[name](x).permute(0, 2, 3, 1).contiguous().view.(batch_size, -1, self.nc))
 
         out_locs, out_confs = torch.cat(out_locs, dim=1), torch.cat(out_confs, dim=1)
         return out_locs, out_confs
@@ -200,7 +194,7 @@ class SSD(nn.Module):
             bboxes_xyxy = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
             dboxes_xyxy = box_convert(dboxes, in_fmt='cxcywh', out_fmt='xyxy')
             max_ious, indices = box_iou(dboxes_xyxy, bboxes_xyxy).max(dim=1)
-            pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().reshape(-1), (max_ious < iou_thresh).nonzero().reshape(-1)
+            pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().view(-1), (max_ious < iou_thresh).nonzero().view(-1)
             N = len(pos_ids)
             if N == 0:
                 continue
