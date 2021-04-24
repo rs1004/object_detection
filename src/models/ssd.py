@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import json
 from torchvision.models import vgg16_bn
 from collections import Counter
@@ -64,18 +65,19 @@ class SSD(nn.Module):
 
         self.dboxes = self._get_dboxes()
 
-        self.init_weights()
+        self.init_weights(blocks=[self.extras, self.localizers, self.classifiers])
 
-    def init_weights(self):
+    def init_weights(self, blocks):
         # 重み初期化
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                # He の初期化
-                # [memo] sigmoid, tanh を使う場合はXavierの初期値, Relu を使用する場合は He の初期値を使用する
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
+        for block in blocks:
+            for m in block.modules():
+                if isinstance(m, nn.Conv2d):
+                    # He の初期化
+                    # [memo] sigmoid, tanh を使う場合はXavierの初期値, Relu を使用する場合は He の初期値を使用する
+                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                elif isinstance(m, nn.BatchNorm2d):
+                    nn.init.constant_(m.weight, 1)
+                    nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
         batch_size = x.size(0)
@@ -85,7 +87,7 @@ class SSD(nn.Module):
             x = m(x)
             if name in self.localizers:
                 out_locs.append(self.localizers[name](x).permute(0, 2, 3, 1).contiguous().view(batch_size, -1, 4))
-                out_confs.append(self.classifiers[name](x).permute(0, 2, 3, 1).contiguous().view.(batch_size, -1, self.nc))
+                out_confs.append(self.classifiers[name](x).permute(0, 2, 3, 1).contiguous().view(batch_size, -1, self.nc))
 
         out_locs, out_confs = torch.cat(out_locs, dim=1), torch.cat(out_confs, dim=1)
         return out_locs, out_confs
@@ -204,7 +206,7 @@ class SSD(nn.Module):
             bboxes_pos = bboxes[indices[pos_ids]]
             dboxes_pos = dboxes[pos_ids]
             dbboxes_pos = self._calc_delta(bboxes=bboxes_pos, dboxes=dboxes_pos)
-            loss_loc += (1 / N) * self._smooth_l1(locs[pos_ids] - dbboxes_pos).sum()
+            loss_loc += (1 / N) * F.smooth_l1_loss(locs[pos_ids], dbboxes_pos, reduction='sum')
 
             # [Step 3]
             #   Positive / Negative Box に対して、Confidence Loss を計算する
@@ -212,7 +214,7 @@ class SSD(nn.Module):
             #   - Negative Box は Loss の上位 len(pos_ids) * 3 個のみを計算に使用する (Hard Negative Mining)
             labels = labels[indices]
             labels[neg_ids] = 0
-            sce = self._softmax_cross_entropy(confs, labels)
+            sce = F.cross_entropy(confs, labels, reduction='none')
             loss_conf += (1 / N) * (sce[pos_ids].sum() + sce[neg_ids].topk(k=int(N * 3)).values.sum())
 
         # [Step 4]
@@ -245,12 +247,6 @@ class SSD(nn.Module):
 
         dbboxes = torch.stack([db_cx, db_cy, db_w, db_h], dim=1).contiguous()
         return dbboxes
-
-    def _smooth_l1(self, x: torch.Tensor) -> torch.Tensor:
-        return torch.where(x.abs() < 1, 0.5 * x ** 2, x.abs() - 0.5)
-
-    def _softmax_cross_entropy(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return -nn.functional.log_softmax(pred, dim=-1)[range(len(target)), target]
 
     def get_parameters(self, lrs: dict = {'features': 0.001, '_': 0.001}) -> list:
         """ 学習パラメータと学習率の一覧を取得する
