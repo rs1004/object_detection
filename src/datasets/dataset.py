@@ -61,7 +61,7 @@ class DetectionDataset(Dataset):
         augmented = self.transform(image=image, image_meta=image_meta, bboxes=bboxes, labels=labels)
         image, image_meta, bboxes, labels = augmented['image'], augmented['image_meta'], augmented['bboxes'], augmented['labels']
         bboxes = box_convert(torch.tensor(bboxes), in_fmt='xywh', out_fmt=self.fmt)
-        bboxes /= self.input_size
+        bboxes = bboxes.div(self.input_size).float()
         labels = torch.tensor(labels)
 
         return image, image_meta, bboxes, labels
