@@ -55,7 +55,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
 predictor = model.inference
-painter = BBoxPainter(classes=meta.classes, save_dir=test_dir)
+painter = BBoxPainter(classes=['back'] + meta.classes, save_dir=test_dir)
 
 torch.backends.cudnn.benchmark = True
 
@@ -86,7 +86,7 @@ model.eval()
 torch.set_grad_enabled(False)
 
 num_done = 0
-for images, bboxes, labels in tqdm(dataloader, total=len(dataloader)):
+for images, image_metas, gt_bboxes, gt_labels in tqdm(dataloader, total=len(dataloader)):
     # to GPU device
     images = images.to(device)
 

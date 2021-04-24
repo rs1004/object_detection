@@ -195,7 +195,8 @@ class SSD(nn.Module):
             #   - N := Positive Box の個数。N = 0 ならば Loss = 0 とする（skip する）
             bboxes_xyxy = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
             dboxes_xyxy = box_convert(dboxes, in_fmt='cxcywh', out_fmt='xyxy')
-            max_ious, indices = box_iou(dboxes_xyxy, bboxes_xyxy).max(dim=1)
+            max_ious, bbox_ids = box_iou(dboxes_xyxy, bboxes_xyxy).max(dim=1)
+            bboxes, labels = bboxes[bbox_ids], labels[bbox_ids]
             pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().view(-1), (max_ious < iou_thresh).nonzero().view(-1)
             N = len(pos_ids)
             if N == 0:
@@ -203,7 +204,7 @@ class SSD(nn.Module):
 
             # [Step 2]
             #   Positive Box に対して、 Localization Loss を計算する
-            bboxes_pos = bboxes[indices[pos_ids]]
+            bboxes_pos = bboxes[pos_ids]
             dboxes_pos = dboxes[pos_ids]
             dbboxes_pos = self._calc_delta(bboxes=bboxes_pos, dboxes=dboxes_pos)
             loss_loc += (1 / N) * F.smooth_l1_loss(locs[pos_ids], dbboxes_pos, reduction='sum')
@@ -212,7 +213,6 @@ class SSD(nn.Module):
             #   Positive / Negative Box に対して、Confidence Loss を計算する
             #   - Negative Box の labels は 0 とする
             #   - Negative Box は Loss の上位 len(pos_ids) * 3 個のみを計算に使用する (Hard Negative Mining)
-            labels = labels[indices]
             labels[neg_ids] = 0
             sce = F.cross_entropy(confs, labels, reduction='none')
             loss_conf += (1 / N) * (sce[pos_ids].sum() + sce[neg_ids].topk(k=int(N * 3)).values.sum())
@@ -248,7 +248,7 @@ class SSD(nn.Module):
         dbboxes = torch.stack([db_cx, db_cy, db_w, db_h], dim=1).contiguous()
         return dbboxes
 
-    def get_parameters(self, lrs: dict = {'features': 0.001, '_': 0.001}) -> list:
+    def get_parameters(self, lrs: dict = {'features': 0, '_': 0.01}) -> list:
         """ 学習パラメータと学習率の一覧を取得する
 
         Args:
@@ -274,9 +274,9 @@ class SSD(nn.Module):
         return params
 
     def inference(self, images: torch.Tensor, outputs: tuple, num_done: int, norm_cfg: dict,
-                  bbox_painter, top_k: int = 30, iou_thresh: float = 0.45) -> int:
+                  bbox_painter, conf_thresh: float = 0.4, iou_thresh: float = 0.45) -> int:
         out_locs, out_confs = outputs
-        out_confs = nn.functional.softmax(out_confs, dim=-1)
+        out_confs = F.softmax(out_confs, dim=-1)
         H, W = images.shape[2:]
 
         # De Normalize
@@ -294,7 +294,7 @@ class SSD(nn.Module):
 
             # 座標・クラスの復元
             confs, class_ids = confs[:, 1:].max(dim=-1)  # 0 is background class
-            valid_ids = confs.topk(k=top_k).indices
+            valid_ids = confs.gt(conf_thresh).nonzero().reshape(-1)
             bboxes_valid = self._calc_coord(dbboxes=locs[valid_ids], dboxes=self.dboxes[valid_ids])
             bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])
             class_ids_valid = class_ids[valid_ids]
@@ -321,7 +321,7 @@ class SSD(nn.Module):
 
     def detect(self, outputs: tuple, image_metas: list, output_dir, conf_thresh: float = 0.4, iou_thresh: float = 0.45):
         out_locs, out_confs = outputs
-        out_confs = nn.functional.softmax(out_confs, dim=-1)
+        out_confs = F.softmax(out_confs, dim=-1)
 
         # to CPU
         out_locs = out_locs.detach().cpu()
