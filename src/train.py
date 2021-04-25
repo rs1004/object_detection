@@ -52,7 +52,6 @@ meta = MetaData(data_dir=data_dir)
 # 実行準備
 log_dir = f'{args.out_dir}/{args.version}/logs'
 weights_dir = f'{args.out_dir}/{args.version}/weights'
-interim_dir = f'{args.out_dir}/{args.version}/interim'
 initial_epoch = 1
 if args.resume:
     for log_path in log_dir.glob('**/events.out.*'):
@@ -61,7 +60,7 @@ if args.resume:
         if 'loss/train' in ea.Tags()['scalars']:
             initial_epoch = max(event.step for event in ea.Scalars('loss/train')) + 1
 else:
-    for d in [log_dir, weights_dir, interim_dir]:
+    for d in [log_dir, weights_dir]:
         rmtree(d, ignore_errors=True)
         Path(d).mkdir(parents=True)
 
@@ -86,7 +85,7 @@ for phase in ['train', 'val']:
 model = SSD(num_classes=meta.num_classes)
 
 weights_path = f'{weights_dir}/latest.pth'
-if weights_path.exists():
+if Path(weights_path).exists():
     model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
 
 # 学習
@@ -94,11 +93,11 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
 criterion = model.loss
-optimizer = SGD(params=model.parameters(), lr=0.002, momentum=0.9, weight_decay=0.0005)
+optimizer = SGD(params=model.get_parameters(), lr=0.002, momentum=0.9, weight_decay=0.0005)
 scheduler = MultiStepLR(optimizer, milestones=[int(args.epochs * 0.5), int(args.epochs * 0.75)])
 
 # 推論
-detector = model.detect
+predictor = model.predict
 eval_interval = 10
 
 torch.backends.cudnn.benchmark = True
@@ -142,6 +141,7 @@ with SummaryWriter(log_dir=log_dir) as writer:
     for epoch in range(initial_epoch, args.epochs + initial_epoch):
         losses = {'train': defaultdict(lambda: 0), 'val': defaultdict(lambda: 0)}
         counts = {'train': 0, 'val': 0}
+        result = []
         for phase, (images, image_metas, gt_bboxes, gt_labels) in tqdm(
                 chain(dataloaders),
                 total=sum(len(dl) for dl in dataloaders.values()),
@@ -166,7 +166,7 @@ with SummaryWriter(log_dir=log_dir) as writer:
                 loss['loss'].backward()
                 optimizer.step()
             elif epoch % eval_interval == 0:
-                detector(outputs, image_metas, interim_dir)
+                result += predictor(images, image_metas, outputs)
 
             for kind in loss.keys():
                 losses[phase][kind] += loss[kind].item() * images.size(0)
@@ -188,18 +188,12 @@ with SummaryWriter(log_dir=log_dir) as writer:
 
         # 評価
         if epoch % eval_interval == 0:
-            result = []
-            for path in interim_dir.glob('**/*.json'):
-                with open(path, 'r') as f:
-                    res = json.load(f)
-                result += res
-                path.unlink()
             if len(result) > 0:
-                with open(f'{interim_dir}/instances_val.json', 'w') as f:
+                with open('pred_val.json', 'w') as f:
                     json.dump(result, f)
 
                 cocoGt = COCO(f'{data_dir}/annotations/instances_val.json')
-                cocoDt = cocoGt.loadRes(f'{interim_dir}/instances_val.json')
+                cocoDt = cocoGt.loadRes('pred_val.json')
                 cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
                 cocoEval.evaluate()
                 cocoEval.accumulate()

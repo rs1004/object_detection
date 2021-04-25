@@ -46,14 +46,14 @@ dataloader = DataLoader(
 # モデル
 model = SSD(num_classes=meta.num_classes)
 
-if weights_path.exists():
+if Path(weights_path).exists():
     model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
 
 # 推論・評価
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
-predictor = model.inference
+predictor = model.predict
 painter = BBoxPainter(classes=['back'] + meta.classes, save_dir=test_dir)
 
 torch.backends.cudnn.benchmark = True
@@ -76,7 +76,7 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 - {model.__class__.__name__}{args.input_size}
 
 [WEIGHTS]
-- {weights_path.as_posix() if weights_path.exists() else 'None'}
+- {weights_path if Path(weights_path).exists() else 'None'}
 
 <-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 ''')
@@ -93,7 +93,7 @@ for images, image_metas, gt_bboxes, gt_labels in tqdm(dataloader, total=len(data
     outputs = model(images)
 
     # inference + evaluation
-    num_done = predictor(images, outputs, num_done, norm_cfg=meta.norm_cfg, bbox_painter=painter)
+    num_done = predictor(images, image_metas, outputs, norm_cfg=meta.norm_cfg, bbox_painter=painter)
 
     if num_done > 20:
         break
