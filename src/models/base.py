@@ -32,19 +32,19 @@ class DetectionNet(nn.Module, metaclass=ABCMeta):
         Returns:
             list: 学習パラメータと学習率の一覧
         """
-        params_to_update = {key: [] for key in lrs.keys()}
+        params_no_decay = []
+        params_else = []
 
         for name, param in self.named_parameters():
-            for key in sorted(lrs.keys(), reverse=True):
-                if key in name or key == '_':
-                    if lrs[key] > 0:
-                        params_to_update[key].append(param)
-                    else:
-                        param.requires_grad = False
-                    break
+            if len(param.shape) == 1:
+                params_no_decay.append(param)
+            else:
+                params_else.append(param)
 
-        lrs = {k: lr for k, lr in lrs.items() if lr > 0}
-        params = [{'params': params_to_update[key], 'lr': lrs[key]} for key in lrs.keys()]
+        params = [
+            {'params': params_no_decay, 'weight_decay': 0.0},
+            {'params': params_else},
+        ]
 
         return params
 
