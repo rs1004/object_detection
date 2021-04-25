@@ -347,7 +347,7 @@ class SSD(nn.Module):
             confs, class_ids = confs[pos_ids], class_ids[pos_ids]
             valid_ids = confs.gt(conf_thresh).nonzero().reshape(-1)
             bboxes_valid = self._calc_coord(dbboxes=locs[valid_ids], dboxes=self.dboxes[valid_ids])
-            bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])
+            bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy').clamp(min=0.0, max=1.0) * torch.tensor([W, H, W, H])
             class_ids_valid = class_ids[valid_ids]
             confs_valid = confs[valid_ids]
 
@@ -370,7 +370,7 @@ class SSD(nn.Module):
 
         return num_done
 
-    def detect(self, outputs: tuple, image_metas: list, output_dir, conf_thresh: float = 0.4, iou_thresh: float = 0.45):
+    def detect(self, outputs: tuple, image_metas: list, output_dir: str, conf_thresh: float = 0.4, iou_thresh: float = 0.45):
         out_locs, out_confs = outputs
         out_confs = F.softmax(out_confs, dim=-1)
 
@@ -387,7 +387,7 @@ class SSD(nn.Module):
             confs, class_ids = confs[pos_ids], class_ids[pos_ids]
             valid_ids = confs.gt(conf_thresh).nonzero().reshape(-1)
             bboxes_valid = self._calc_coord(dbboxes=locs[valid_ids], dboxes=self.dboxes[valid_ids])
-            bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])
+            bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy').clamp(min=0.0, max=1.0) * torch.tensor([W, H, W, H])
             class_ids_valid = class_ids[valid_ids]
             confs_valid = confs[valid_ids]
 
@@ -407,7 +407,7 @@ class SSD(nn.Module):
                 }
                 result.append(res)
 
-            with open(output_dir / f"{image_meta['image_id']:08}.json", 'w') as f:
+            with open(f'{output_dir}/{image_meta["image_id"]:08}.json', 'w') as f:
                 json.dump(result, f)
 
     def _calc_coord(self, dbboxes: torch.Tensor, dboxes: torch.Tensor, std: list = [0.1, 0.2]) -> torch.Tensor:

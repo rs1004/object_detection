@@ -23,10 +23,10 @@ args = parser.parse_args()
 data_dir = f'./data/{args.data_name}'
 meta = MetaData(data_dir=data_dir)
 
-test_dir = Path(args.out_dir) / args.version / 'test'
-weights_dir = Path(args.out_dir) / args.version / 'weights'
+test_dir = f'{args.out_dir}/{args.version}/test'
+weights_path = f'{args.out_dir}/{args.version}/weights/latest.pth'
 rmtree(test_dir, ignore_errors=True)
-test_dir.mkdir(parents=True, exist_ok=True)
+Path(test_dir).mkdir(parents=True, exist_ok=True)
 
 # データ生成
 dataset = DetectionDataset(
@@ -46,7 +46,6 @@ dataloader = DataLoader(
 # モデル
 model = SSD(num_classes=meta.num_classes)
 
-weights_path = weights_dir / 'latest.pth'
 if weights_path.exists():
     model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
 

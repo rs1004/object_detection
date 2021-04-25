@@ -1,7 +1,6 @@
 from torch.utils.data import Dataset
 from torchvision.ops import box_convert
 from PIL import Image
-from pathlib import Path
 from pycocotools.coco import COCO
 import torch
 import numpy as np
@@ -76,11 +75,11 @@ class DetectionDataset(Dataset):
         Returns:
             list: (画像のパス, 画像メタ情報, アノテーション）のリスト
         """
-        anno_path = Path(data_dir) / 'annotations' / f'instances_{phase}.json'
+        anno_path = f'{data_dir}/annotations/instances_{phase}.json'
         cocoGt = COCO(anno_path)
 
         data_list = [[
-            (Path(data_dir) / phase / cocoGt.loadImgs(ids=image_id)[0]['file_name']).as_posix(),
+            f'{data_dir}/{phase}/{cocoGt.loadImgs(ids=image_id)[0]["file_name"]}',
             cocoGt.loadImgs(ids=image_id)[0],
             cocoGt.loadAnns(cocoGt.getAnnIds(imgIds=image_id))
         ] for image_id in cocoGt.getImgIds()]

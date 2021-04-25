@@ -1,7 +1,6 @@
 import torch
 import seaborn as sns
 from PIL import Image, ImageDraw, ImageFont
-from pathlib import Path
 
 
 class BBoxPainter:
@@ -28,7 +27,7 @@ class BBoxPainter:
         xmin, ymin, xmax, ymax = coord
         color = self.palette[int(class_id)]
         text = f'{self.classes[int(class_id)]}: {round(float(conf), 3)}'
-        font = ImageFont.truetype((Path(__file__).parent / 'Gargi.ttf').as_posix())
+        font = ImageFont.truetype('arial.ttf')
 
         draw = ImageDraw.Draw(image)
         draw.rectangle((int(xmin), int(ymin), int(xmax), int(ymax)), outline=color, width=2)
@@ -48,7 +47,7 @@ class BBoxPainter:
             image = self._to_pil_image(image)
 
         image = image.resize(imsize)
-        image.save(Path(self.save_dir) / file_name)
+        image.save(f'{self.save_dir}/{file_name}')
 
     def _to_pil_image(self, image_tensor):
         return Image.fromarray((image_tensor.permute(1, 2, 0) * 255).numpy().astype('uint8'))

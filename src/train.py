@@ -50,9 +50,9 @@ data_dir = f'./data/{args.data_name}'
 meta = MetaData(data_dir=data_dir)
 
 # 実行準備
-log_dir = Path(args.out_dir) / args.version / 'logs'
-weights_dir = Path(args.out_dir) / args.version / 'weights'
-interim_dir = Path(args.out_dir) / args.version / 'interim'
+log_dir = f'{args.out_dir}/{args.version}/logs'
+weights_dir = f'{args.out_dir}/{args.version}/weights'
+interim_dir = f'{args.out_dir}/{args.version}/interim'
 initial_epoch = 1
 if args.resume:
     for log_path in log_dir.glob('**/events.out.*'):
@@ -63,7 +63,7 @@ if args.resume:
 else:
     for d in [log_dir, weights_dir, interim_dir]:
         rmtree(d, ignore_errors=True)
-        d.mkdir(parents=True)
+        Path(d).mkdir(parents=True)
 
 # データ生成
 dataloaders = {}
@@ -85,7 +85,7 @@ for phase in ['train', 'val']:
 # モデル
 model = SSD(num_classes=meta.num_classes)
 
-weights_path = weights_dir / 'latest.pth'
+weights_path = f'{weights_dir}/latest.pth'
 if weights_path.exists():
     model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
 
@@ -195,11 +195,11 @@ with SummaryWriter(log_dir=log_dir) as writer:
                 result += res
                 path.unlink()
             if len(result) > 0:
-                with open(interim_dir / 'instances_val.json', 'w') as f:
+                with open(f'{interim_dir}/instances_val.json', 'w') as f:
                     json.dump(result, f)
 
-                cocoGt = COCO((Path(data_dir) / 'annotations' / 'instances_val.json').as_posix())
-                cocoDt = cocoGt.loadRes((interim_dir / 'instances_val.json').as_posix())
+                cocoGt = COCO(f'{data_dir}/annotations/instances_val.json')
+                cocoDt = cocoGt.loadRes(f'{interim_dir}/instances_val.json')
                 cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
                 cocoEval.evaluate()
                 cocoEval.accumulate()
@@ -209,7 +209,7 @@ with SummaryWriter(log_dir=log_dir) as writer:
 
         # 重みファイル保存
         if losses['val']['loss'] < min_val_loss:
-            torch.save(model.state_dict(), weights_dir / 'latest.pth')
+            torch.save(model.state_dict(), weights_path)
             min_val_loss = losses['val']['loss']
 
         # スケジューラ更新
