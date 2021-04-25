@@ -6,7 +6,7 @@ from torchvision.models import vgg16_bn
 from collections import Counter
 from itertools import product
 from torchvision.ops import box_iou, box_convert, batched_nms
-from models.layers import ConvBlock, L2Norm
+from models.layers import ConvBlock
 
 
 class SSD(nn.Module):
@@ -40,10 +40,7 @@ class SSD(nn.Module):
         ])
 
         self.localizers = nn.ModuleDict({
-            'conv4_3': nn.Sequential(
-                L2Norm(512),
-                nn.Conv2d(in_channels=512, out_channels=4 * 4, kernel_size=3, padding=1)
-            ),
+            'conv4_3': nn.Conv2d(in_channels=512, out_channels=4 * 4, kernel_size=3, padding=1),
             'conv7_1': nn.Conv2d(in_channels=1024, out_channels=6 * 4, kernel_size=3, padding=1),
             'conv8_2': nn.Conv2d(in_channels=512, out_channels=6 * 4, kernel_size=3, padding=1),
             'conv9_2': nn.Conv2d(in_channels=256, out_channels=6 * 4, kernel_size=3, padding=1),
@@ -52,10 +49,7 @@ class SSD(nn.Module):
         })
 
         self.classifiers = nn.ModuleDict({
-            'conv4_3': nn.Sequential(
-                L2Norm(512),
-                nn.Conv2d(in_channels=512, out_channels=4 * self.nc, kernel_size=3, padding=1)
-            ),
+            'conv4_3': nn.Conv2d(in_channels=512, out_channels=4 * self.nc, kernel_size=3, padding=1),
             'conv7_1': nn.Conv2d(in_channels=1024, out_channels=6 * self.nc, kernel_size=3, padding=1),
             'conv8_2': nn.Conv2d(in_channels=512, out_channels=6 * self.nc, kernel_size=3, padding=1),
             'conv9_2': nn.Conv2d(in_channels=256, out_channels=6 * self.nc, kernel_size=3, padding=1),
@@ -135,7 +129,7 @@ class SSD(nn.Module):
         Returns:
             torch.Tensor (8732, 4): Default Box (fmt: [cx, cy, w, h])
         """
-        def s_(k, m=6, s_min=0.2, s_max=0.9):
+        def s_(k, m=6, s_min=0.1, s_max=0.88):
             return s_min + (s_max - s_min) * (k - 1) / (m - 1)
 
         dboxes = []
@@ -156,6 +150,61 @@ class SSD(nn.Module):
 
         dboxes = torch.tensor(dboxes).clamp(min=0.0, max=1.0)
         return dboxes
+
+    def debug(self, images, outputs, gt_bboxes, gt_labels, bbox_painter, num_done, norm_cfg):
+
+        mean = torch.tensor(norm_cfg['mean']).reshape(1, 3, 1, 1)
+        std = torch.tensor(norm_cfg['std']).reshape(1, 3, 1, 1)
+        images = images * std + mean
+
+        out_locs, out_confs = outputs
+        out_confs = nn.functional.softmax(out_confs, dim=-1)
+
+        for image, locs, confs, bboxes, labels in zip(images, out_locs, out_confs, gt_bboxes, gt_labels):
+            bboxes_xyxy = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
+            dboxes_xyxy = box_convert(self.dboxes, in_fmt='cxcywh', out_fmt='xyxy')
+            max_ious, bbox_ids = box_iou(dboxes_xyxy * 300, bboxes_xyxy * 300).max(dim=1)
+            bboxes, labels = bboxes[bbox_ids], labels[bbox_ids]
+
+            pos_ids = (max_ious >= 0.5).nonzero().view(-1)
+            if len(pos_ids) == 0:
+                continue
+            dboxes_xyxy = dboxes_xyxy[pos_ids] * 300
+            labels = labels[pos_ids]
+
+            pboxes_xyxy = box_convert(self._calc_coord(locs[pos_ids], self.dboxes[pos_ids]), in_fmt='cxcywh', out_fmt='xyxy') * 300
+            confs, ids = confs[pos_ids].max(dim=-1)
+
+            bboxes_xyxy = bboxes_xyxy * 300
+
+            for dbox, pbox, bbox, class_id, conf, id in zip(dboxes_xyxy, pboxes_xyxy, bboxes_xyxy, labels, confs, ids):
+                image = bbox_painter.draw_bbox(
+                    image=image,
+                    coord=dbox,
+                    class_id=class_id,
+                    conf=1.0
+                )
+
+                image = bbox_painter.draw_bbox(
+                    image=image,
+                    coord=bbox,
+                    class_id=class_id,
+                    conf=1.0
+                )
+
+                image = bbox_painter.draw_bbox(
+                    image=image,
+                    coord=pbox,
+                    class_id=id,
+                    conf=conf
+                )
+
+                break
+
+            bbox_painter.save(image, file_name=f'{num_done:06}.png')
+            num_done += 1
+
+        return num_done
 
     def loss(self, outputs: tuple, gt_bboxes: list, gt_labels: list, iou_thresh: float = 0.5, alpha: float = 1.0) -> dict:
         """ 損失関数
@@ -293,7 +342,9 @@ class SSD(nn.Module):
         for image, locs, confs in zip(images, out_locs, out_confs):
 
             # 座標・クラスの復元
-            confs, class_ids = confs[:, 1:].max(dim=-1)  # 0 is background class
+            confs, class_ids = confs.max(dim=-1)
+            pos_ids = class_ids.nonzero().reshape(-1)  # 0 is background class
+            confs, class_ids = confs[pos_ids], class_ids[pos_ids]
             valid_ids = confs.gt(conf_thresh).nonzero().reshape(-1)
             bboxes_valid = self._calc_coord(dbboxes=locs[valid_ids], dboxes=self.dboxes[valid_ids])
             bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])
@@ -331,7 +382,9 @@ class SSD(nn.Module):
 
             # 座標・クラスの復元
             H, W = image_meta['height'], image_meta['width']
-            confs, class_ids = confs[:, 1:].max(dim=-1)  # 0 is background class
+            confs, class_ids = confs.max(dim=-1)
+            pos_ids = class_ids.nonzero().reshape(-1)  # 0 is background class
+            confs, class_ids = confs[pos_ids], class_ids[pos_ids]
             valid_ids = confs.gt(conf_thresh).nonzero().reshape(-1)
             bboxes_valid = self._calc_coord(dbboxes=locs[valid_ids], dboxes=self.dboxes[valid_ids])
             bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])

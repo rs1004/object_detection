@@ -17,8 +17,9 @@ class Pipeline:
     def __init__(self, input_size: int, mean: tuple, std: tuple, phase: str = 'train'):
         if phase == 'train':
             self.data_pipeline = A.Compose([
-                A.RandomSizedBBoxSafeCrop(height=input_size, width=input_size),
+                A.RandomSizedBBoxSafeCrop(height=input_size, width=input_size, erosion_rate=0.3),
                 A.HorizontalFlip(),
+                A.ColorJitter(brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
                 A.Normalize(mean=mean, std=std),
                 T.ToTensorV2()
             ], bbox_params=A.BboxParams(format='coco', label_fields=['labels']))

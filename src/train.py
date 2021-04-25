@@ -94,7 +94,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
 criterion = model.loss
-optimizer = SGD(params=model.get_parameters(), lr=0.001, momentum=0.9, weight_decay=0.0005)
+optimizer = SGD(params=model.parameters(), lr=0.002, momentum=0.9, weight_decay=0.0005)
 scheduler = MultiStepLR(optimizer, milestones=[int(args.epochs * 0.5), int(args.epochs * 0.75)])
 
 # 推論
@@ -193,6 +193,7 @@ with SummaryWriter(log_dir=log_dir) as writer:
                 with open(path, 'r') as f:
                     res = json.load(f)
                 result += res
+                path.unlink()
             if len(result) > 0:
                 with open(interim_dir / 'instances_val.json', 'w') as f:
                     json.dump(result, f)
