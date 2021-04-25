@@ -5,7 +5,7 @@ from torchvision.models import vgg16_bn
 from collections import Counter
 from itertools import product
 from torchvision.ops import box_iou, box_convert, batched_nms
-from models.layers import ConvBlock
+from models.layers import ConvBlock, L2Norm
 from models.base import DetectionNet
 
 
@@ -40,7 +40,10 @@ class SSD(DetectionNet):
         ])
 
         self.localizers = nn.ModuleDict({
-            'conv4_3': nn.Conv2d(in_channels=512, out_channels=4 * 4, kernel_size=3, padding=1),
+            'conv4_3': nn.Sequential(
+                L2Norm(n_channels=512),
+                nn.Conv2d(in_channels=512, out_channels=4 * 4, kernel_size=3, padding=1)
+            ),
             'conv7_1': nn.Conv2d(in_channels=1024, out_channels=6 * 4, kernel_size=3, padding=1),
             'conv8_2': nn.Conv2d(in_channels=512, out_channels=6 * 4, kernel_size=3, padding=1),
             'conv9_2': nn.Conv2d(in_channels=256, out_channels=6 * 4, kernel_size=3, padding=1),
@@ -49,7 +52,10 @@ class SSD(DetectionNet):
         })
 
         self.classifiers = nn.ModuleDict({
-            'conv4_3': nn.Conv2d(in_channels=512, out_channels=4 * self.nc, kernel_size=3, padding=1),
+            'conv4_3': nn.Sequential(
+                L2Norm(n_channels=512),
+                nn.Conv2d(in_channels=512, out_channels=4 * self.nc, kernel_size=3, padding=1)
+            ),
             'conv7_1': nn.Conv2d(in_channels=1024, out_channels=6 * self.nc, kernel_size=3, padding=1),
             'conv8_2': nn.Conv2d(in_channels=512, out_channels=6 * self.nc, kernel_size=3, padding=1),
             'conv9_2': nn.Conv2d(in_channels=256, out_channels=6 * self.nc, kernel_size=3, padding=1),
@@ -259,7 +265,7 @@ class SSD(DetectionNet):
         bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1).contiguous()
         return bboxes
 
-    def predict(self, images: torch.Tensor, image_metas: list, outputs: tuple, norm_cfg: dict - None,
+    def predict(self, images: torch.Tensor, image_metas: list, outputs: tuple, norm_cfg: dict = None,
                 conf_thresh: float = 0.4, iou_thresh: float = 0.45, bbox_painter=None) -> list:
         """ BBox の予測を行う
 
