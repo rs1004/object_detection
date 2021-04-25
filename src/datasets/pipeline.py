@@ -17,17 +17,17 @@ class Pipeline:
     def __init__(self, input_size: int, mean: tuple, std: tuple, phase: str = 'train'):
         if phase == 'train':
             self.data_pipeline = A.Compose([
-                A.RandomSizedBBoxSafeCrop(height=input_size, width=input_size, erosion_rate=0.3),
+                A.RandomSizedBBoxSafeCrop(height=input_size, width=input_size, erosion_rate=0.1),
                 A.HorizontalFlip(),
                 A.ColorJitter(brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
                 A.Normalize(mean=mean, std=std),
-                T.ToTensorV2()
+                T.ToTensor()
             ], bbox_params=A.BboxParams(format='coco', label_fields=['labels']))
         elif phase == 'val':
             self.data_pipeline = A.Compose([
                 A.Resize(height=input_size, width=input_size),
                 A.Normalize(mean=mean, std=std),
-                T.ToTensorV2()
+                T.ToTensor()
             ], bbox_params=A.BboxParams(format='coco', label_fields=['labels']))
         else:
             raise NotImplementedError(f'phase "{phase}" is invalid')
@@ -40,6 +40,9 @@ if __name__ == '__main__':
     from datasets.dataset import DetectionDataset
     from PIL import Image, ImageDraw
 
+    classes = ['aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car', 'cat', 'chair', 'cow',
+               'diningtable', 'dog', 'horse', 'motorbike', 'person', 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor']
+
     size = 300
     norm_cfg = {
         'mean': [0.485, 0.456, 0.406],
@@ -49,7 +52,8 @@ if __name__ == '__main__':
     image, _, bboxes, labels = ds.__getitem__(0)
     image = Image.fromarray((image.permute(1, 2, 0) * 255).numpy().astype('uint8'))
     draw = ImageDraw.Draw(image)
-    for xmin, ymin, xmax, ymax in bboxes:
+    for (xmin, ymin, xmax, ymax), label in zip(bboxes, labels):
         draw.rectangle((int(xmin * size), int(ymin * size), int(xmax * size), int(ymax * size)), outline=(255, 255, 255), width=3)
+        draw.text((int(xmin * size), int(ymin * size)), classes[int(label)-1])
 
     image.save('./demo/transformed.png')
