@@ -36,9 +36,7 @@ class DetectionNet(nn.Module, metaclass=ABCMeta):
         params_else = []
 
         for name, param in self.named_parameters():
-            if 'features' in name:
-                param.requires_grad = False
-            elif len(param.shape) == 1:
+            if len(param.shape) == 1:
                 params_no_decay.append(param)
             else:
                 params_else.append(param)

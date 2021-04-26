@@ -9,29 +9,34 @@ class BBoxPainter:
         self.save_dir = save_dir
         self.palette = [tuple([int(i * 255) for i in c]) for c in sns.color_palette('hls', n_colors=len(classes))]
 
-    def draw_bbox(self, image: torch.Tensor or Image, coord: torch.Tensor, class_id: torch.Tensor, conf: torch.Tensor) -> Image:
+    def draw_bbox(self, image: Image, result: list) -> Image:
         """ BBox を描画する
 
         Args:
-            image (torch.Tensor or Image): 画像データ
-            coord (torch.Tensor): BBox 座標データ（fmt: [xmin, ymin, xmax, ymax], pixel 座標）
-            class_id (torch.Tensor): BBox クラスデータ
-            conf (torch.Tensor): BBox 信頼度
+            image (Image): 画像データ
+            result (list): 予測結果の辞書のリスト
+                [{
+                    'image_id': 画像ID
+                    'category_id': クラスID
+                    'bbox': BBox 座標 (fmt: [x, y, w, h])
+                    'score': 信頼度
+                }]
 
         Returns:
-            Image: [description]
+            Image: BBox 描画済み画像
         """
-        if isinstance(image, torch.Tensor):
-            image = self._to_pil_image(image)
-
-        xmin, ymin, xmax, ymax = coord
-        color = self.palette[int(class_id)]
-        text = f'{self.classes[int(class_id)]}: {round(float(conf), 3)}'
+        draw = ImageDraw.Draw(image)
         font = ImageFont.truetype('arial.ttf')
 
-        draw = ImageDraw.Draw(image)
-        draw.rectangle((int(xmin), int(ymin), int(xmax), int(ymax)), outline=color, width=2)
-        draw.text((xmin, ymin), text, fill=color, font=font)
+        for res in result:
+            x, y, w, h = res['bbox']
+            class_id = res['category_id']
+            score = res['score']
+            color = self.palette[class_id]
+            text = f'{self.classes[class_id]}: {round(score, 3)}'
+
+            draw.rectangle((x, y, x + w, y + h), outline=color, width=2)
+            draw.text((x, y), text, fill=color, font=font)
 
         return image
 
@@ -44,10 +49,10 @@ class BBoxPainter:
             imsize (tuple, optional): リサイズして保存する. Defaults to (600, 400).
         """
         if isinstance(image, torch.Tensor):
-            image = self._to_pil_image(image)
+            image = self.to_pil_image(image)
 
         image = image.resize(imsize)
         image.save(f'{self.save_dir}/{file_name}')
 
-    def _to_pil_image(self, image_tensor):
-        return Image.fromarray((image_tensor.permute(1, 2, 0) * 255).numpy().astype('uint8'))
+    def to_pil_image(self, image_tensor, size=(300, 300)):
+        return Image.fromarray((image_tensor.permute(1, 2, 0) * 255).numpy().astype('uint8')).resize(size)

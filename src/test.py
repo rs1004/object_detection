@@ -93,7 +93,8 @@ for images, image_metas, gt_bboxes, gt_labels in tqdm(dataloader, total=len(data
     outputs = model(images)
 
     # inference + evaluation
-    num_done = predictor(images, image_metas, outputs, norm_cfg=meta.norm_cfg, bbox_painter=painter)
+    result = predictor(images, image_metas, outputs, norm_cfg=meta.norm_cfg, bbox_painter=painter)
+    num_done += len(result)
 
     if num_done > 20:
         break

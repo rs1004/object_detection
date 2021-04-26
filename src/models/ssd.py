@@ -152,7 +152,7 @@ class SSD(DetectionNet):
                         h = s_(k) * pow(1 / a, 0.5)
                     dboxes.append([cx, cy, w, h])
 
-        dboxes = torch.tensor(dboxes).clamp(min=0.0, max=1.0)
+        dboxes = torch.tensor(dboxes)
         return dboxes
 
     def loss(self, outputs: tuple, gt_bboxes: list, gt_labels: list, iou_thresh: float = 0.5, alpha: float = 1.0) -> dict:
@@ -195,7 +195,7 @@ class SSD(DetectionNet):
             dboxes_xyxy = box_convert(dboxes, in_fmt='cxcywh', out_fmt='xyxy')
             max_ious, bbox_ids = box_iou(dboxes_xyxy, bboxes_xyxy).max(dim=1)
             bboxes, labels = bboxes[bbox_ids], labels[bbox_ids]
-            pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().view(-1), (max_ious < iou_thresh).nonzero().view(-1)
+            pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().reshape(-1), (max_ious < iou_thresh).nonzero().reshape(-1)
             N = len(pos_ids)
             if N == 0:
                 continue
@@ -284,13 +284,6 @@ class SSD(DetectionNet):
         out_locs, out_confs = outputs
         out_confs = F.softmax(out_confs, dim=-1)
 
-        # De Normalize
-        device = images.device
-        if bbox_painter:
-            mean = torch.tensor(norm_cfg['mean']).reshape(1, 3, 1, 1).to(device)
-            std = torch.tensor(norm_cfg['std']).reshape(1, 3, 1, 1).to(device)
-            images = images * std + mean
-
         # to CPU
         images = images.detach().cpu()
         out_locs = out_locs.detach().cpu()
@@ -305,7 +298,7 @@ class SSD(DetectionNet):
             confs, class_ids = confs[pos_ids], class_ids[pos_ids]
             valid_ids = confs.gt(conf_thresh).nonzero().reshape(-1)
             bboxes_valid = self._calc_coord(dbboxes=locs[valid_ids], dboxes=self.dboxes[valid_ids])
-            bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy').clamp(min=0.0, max=1.0) * torch.tensor([W, H, W, H])
+            bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])
             class_ids_valid = class_ids[valid_ids]
             confs_valid = confs[valid_ids]
 
@@ -326,7 +319,12 @@ class SSD(DetectionNet):
                 result.append(res)
 
             if bbox_painter:
-                image = bbox_painter._to_pil_image(image, size=(W, H))
+                # De Normalize
+                mean = torch.tensor(norm_cfg['mean']).reshape(3, 1, 1)
+                std = torch.tensor(norm_cfg['std']).reshape(3, 1, 1)
+                image = image * std + mean
+
+                image = bbox_painter.to_pil_image(image, size=(W, H))
                 bbox_painter.draw_bbox(image, result).save(f'{image_meta["image_id"]:08}.png')
 
             return result
