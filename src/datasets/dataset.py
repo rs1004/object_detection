@@ -23,6 +23,7 @@ class DetectionDataset(Dataset):
 
     def __init__(self, data_dir: str, input_size: int, norm_cfg: dict, fmt: str = 'cxcywh', phase: str = 'train'):
         super(DetectionDataset, self).__init__()
+        self.classes = None
         self.data_list = self._get_data_list(data_dir, phase)
         self.input_size = input_size
         self.fmt = fmt
@@ -77,6 +78,7 @@ class DetectionDataset(Dataset):
         """
         anno_path = f'{data_dir}/annotations/instances_{phase}.json'
         cocoGt = COCO(anno_path)
+        self.classes = {cat['id']: cat['name'] for cat in cocoGt.loadCats(cocoGt.getCatIds())}
 
         data_list = [[
             f'{data_dir}/{phase}/{cocoGt.loadImgs(ids=image_id)[0]["file_name"]}',

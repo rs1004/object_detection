@@ -325,7 +325,8 @@ class SSD(DetectionNet):
                 image = image * std + mean
 
                 image = bbox_painter.to_pil_image(image, size=(W, H))
-                bbox_painter.draw_bbox(image, result).save(f'{image_meta["image_id"]:08}.png')
+                image = bbox_painter.draw_bbox(image, result)
+                bbox_painter.save(image=image, file_name=f'{image_meta["image_id"]:08}.png')
 
             return result
 

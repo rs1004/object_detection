@@ -2,7 +2,7 @@ import argparse
 import torch
 import json
 from shutil import rmtree
-from datasets import DetectionDataset, MetaData
+from datasets import DetectionDataset
 from torch.utils.data import DataLoader
 from torch.optim import SGD
 from torch.optim.lr_scheduler import MultiStepLR
@@ -47,7 +47,6 @@ args = parser.parse_args()
 # --------------------------------------------------
 
 data_dir = f'./data/{args.data_name}'
-meta = MetaData(data_dir=data_dir)
 
 # 実行準備
 log_dir = f'{args.out_dir}/{args.version}/logs'
@@ -70,7 +69,7 @@ for phase in ['train', 'val']:
     dataset = DetectionDataset(
         data_dir=data_dir,
         input_size=args.input_size,
-        norm_cfg=meta.norm_cfg,
+        norm_cfg={'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]},
         phase=phase
     )
 
@@ -82,7 +81,7 @@ for phase in ['train', 'val']:
     )
 
 # モデル
-model = SSD(num_classes=meta.num_classes)
+model = SSD(num_classes=len(dataset.classes))
 
 weights_path = f'{weights_dir}/latest.pth'
 if Path(weights_path).exists():

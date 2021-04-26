@@ -1,7 +1,7 @@
 import argparse
 import torch
 from shutil import rmtree
-from datasets import DetectionDataset, MetaData
+from datasets import DetectionDataset
 from torch.utils.data import DataLoader
 from models import SSD
 from utils import BBoxPainter
@@ -21,7 +21,6 @@ args = parser.parse_args()
 # --------------------------------------------------
 
 data_dir = f'./data/{args.data_name}'
-meta = MetaData(data_dir=data_dir)
 
 test_dir = f'{args.out_dir}/{args.version}/test'
 weights_path = f'{args.out_dir}/{args.version}/weights/latest.pth'
@@ -32,7 +31,7 @@ Path(test_dir).mkdir(parents=True, exist_ok=True)
 dataset = DetectionDataset(
     data_dir=data_dir,
     input_size=args.input_size,
-    norm_cfg=meta.norm_cfg,
+    norm_cfg={'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]},
     phase='val'
 )
 
@@ -44,7 +43,7 @@ dataloader = DataLoader(
 )
 
 # モデル
-model = SSD(num_classes=meta.num_classes)
+model = SSD(num_classes=len(dataset.classes))
 
 if Path(weights_path).exists():
     model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
@@ -54,7 +53,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
 predictor = model.predict
-painter = BBoxPainter(classes=['back'] + meta.classes, save_dir=test_dir)
+painter = BBoxPainter(classes=dataset.classes, save_dir=test_dir)
 
 torch.backends.cudnn.benchmark = True
 
@@ -93,7 +92,7 @@ for images, image_metas, gt_bboxes, gt_labels in tqdm(dataloader, total=len(data
     outputs = model(images)
 
     # inference + evaluation
-    result = predictor(images, image_metas, outputs, norm_cfg=meta.norm_cfg, bbox_painter=painter)
+    result = predictor(images, image_metas, outputs, norm_cfg={'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]}, bbox_painter=painter)
     num_done += len(result)
 
     if num_done > 20:
