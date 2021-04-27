@@ -1,6 +1,5 @@
 import argparse
 import torch
-import json
 from shutil import rmtree
 from datasets import DetectionDataset
 from torch.utils.data import DataLoader
@@ -13,8 +12,7 @@ from pathlib import Path
 from torchsummary import summary
 from tqdm import tqdm
 from collections import defaultdict
-from pycocotools.coco import COCO
-from pycocotools.cocoeval import COCOeval
+from utils import Evaluator
 
 
 def chain(loaders: dict) -> tuple:
@@ -97,6 +95,7 @@ scheduler = MultiStepLR(optimizer, milestones=[int(args.epochs * 0.5), int(args.
 
 # 推論
 predictor = model.predict
+evaluator = Evaluator(anno_path=f'{data_dir}/annotations/instances_val.json', pred_path='pred_val.json')
 eval_interval = 10
 
 torch.backends.cudnn.benchmark = True
@@ -188,15 +187,8 @@ with SummaryWriter(log_dir=log_dir) as writer:
         # 評価
         if epoch % eval_interval == 0:
             if len(result) > 0:
-                with open('pred_val.json', 'w') as f:
-                    json.dump(result, f)
-
-                cocoGt = COCO(f'{data_dir}/annotations/instances_val.json')
-                cocoDt = cocoGt.loadRes('pred_val.json')
-                cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
-                cocoEval.evaluate()
-                cocoEval.accumulate()
-                cocoEval.summarize()
+                evaluator.dump_pred(result)
+                evaluator.run()
             else:
                 print('No Object Detected. Skip Evaluation')
 

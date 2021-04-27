@@ -4,6 +4,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 class BBoxPainter:
     """ BBox の描画を行うクラス
+
     Args:
         classes (dict): クラス ID とクラス名の辞書
         save_dir (str): BBox 描画済み画像を保存するディレクトリ
