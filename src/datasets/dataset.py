@@ -9,30 +9,26 @@ from datasets.pipeline import Pipeline
 
 class DetectionDataset(Dataset):
     """ 物体検出のデータセット
+
     Args:
         data_dir (str): 画像データのディレクトリ
-        input_size (int): モデルへの画像の入力サイズ (データ拡張で使用)
-        norm_cfg (dict): 画像の標準化設定値（データ拡張で使用）
+        pipeline (dict): Augmentation の定義辞書
         fmt (str): bbox のフォーマット. 'xyxy' or 'cxcywh'
         phase (str): 'train' or 'val'
+
     Returns:
-        (image, bbox, label): image: torch.tensor (3, input_size, input_size)
-                              bbox : torch.tensor (k, 4) (fmt: [cx, cy, w, h])
-                              label: torch.tensor (k,)
+        (image, image_meta, bbox, label): image      : torch.tensor (3, input_size, input_size)
+                                          image_meta : dict
+                                          bbox       : torch.tensor (k, 4) (coord fmt: [cx, cy, w, h])
+                                          label      : torch.tensor (k,)
     """
 
-    def __init__(self, data_dir: str, input_size: int, norm_cfg: dict, fmt: str = 'cxcywh', phase: str = 'train'):
+    def __init__(self, data_dir: str, pipeline: dict, fmt: str = 'cxcywh', phase: str = 'train'):
         super(DetectionDataset, self).__init__()
         self.classes = None
         self.data_list = self._get_data_list(data_dir, phase)
-        self.input_size = input_size
         self.fmt = fmt
-        self.transform = Pipeline(
-            input_size=input_size,
-            mean=norm_cfg['mean'],
-            std=norm_cfg['std'],
-            phase=phase
-        )
+        self.transform = Pipeline(pipeline)
 
     def __len__(self):
         return len(self.data_list)
@@ -58,10 +54,9 @@ class DetectionDataset(Dataset):
             labels.append(anno['category_id'])
 
         # transform
-        augmented = self.transform(image=image, image_meta=image_meta, bboxes=bboxes, labels=labels)
-        image, image_meta, bboxes, labels = augmented['image'], augmented['image_meta'], augmented['bboxes'], augmented['labels']
+        image, image_meta, bboxes, labels = self.transform(image=image, image_meta=image_meta, bboxes=bboxes, labels=labels)
         bboxes = box_convert(torch.tensor(bboxes), in_fmt='xywh', out_fmt=self.fmt)
-        bboxes = bboxes.div(self.input_size).float()
+        bboxes = bboxes.div(image.size(-1)).float()
         labels = torch.tensor(labels)
 
         return image, image_meta, bboxes, labels
@@ -104,11 +99,16 @@ class DetectionDataset(Dataset):
 
 
 if __name__ == '__main__':
-    norm_cfg = {
-        'mean': [0.485, 0.456, 0.406],
-        'std': [0.229, 0.224, 0.225]
-    }
-    ds = DetectionDataset('/home/sato/work/object_detection/data/voc', 100, norm_cfg)
+    pipeline = [
+        dict(type='albu', compose=[
+            dict(type='Resize', height=300, width=300)
+        ]),
+        dict(type='torch', compose=[
+            dict(type='ToTensor'),
+            dict(type='Normalize', mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
+    ]
+    ds = DetectionDataset('/home/sato/work/object_detection/data/voc', pipeline)
     image, image_meta, bboxes, labels = ds.__getitem__(0)
     print(image)
     print(image_meta)

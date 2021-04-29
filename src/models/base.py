@@ -57,6 +57,5 @@ class DetectionNet(nn.Module, metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def predict(self, images: torch.Tensor, image_metas: list, outputs,
-                conf_thresh: float = 0.4, iou_thresh: float = 0.45):
+    def pre_predict(self, outputs: tuple) -> tuple:
         pass

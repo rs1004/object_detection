@@ -1,5 +1,6 @@
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
+from pathlib import Path
 import json
 
 
@@ -38,5 +39,6 @@ class Evaluator:
         cocoEval.summarize()
 
     def dump_pred(self, d: dict):
+        Path(self.pred_path).parent.mkdir(exist_ok=True, parents=True)
         with open(self.pred_path, 'w') as f:
             json.dump(d, f)

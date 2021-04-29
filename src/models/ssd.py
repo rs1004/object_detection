@@ -1,24 +1,17 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models import vgg16_bn
 from collections import Counter
 from itertools import product
-from torchvision.ops import box_iou, box_convert, batched_nms
+from torchvision.ops import box_iou, box_convert
 from models.layers import ConvBlock, L2Norm
 from models.base import DetectionNet
 
 
 class SSD(DetectionNet):
-    def __init__(self, num_classes, pretrained=True, pretrained_weights=None):
+    def __init__(self, num_classes: int, backborn: nn.Module):
         super(SSD, self).__init__()
         self.nc = num_classes + 1  # add background class
-
-        if pretrained_weights:
-            backborn = vgg16_bn(pretrained=False)
-            backborn.load_state_dict(torch.load(pretrained_weights))
-        else:
-            backborn = vgg16_bn(pretrained=pretrained)
 
         self.features = self._trace_features(backborn.features[:-1])
 
@@ -131,7 +124,7 @@ class SSD(DetectionNet):
         """ Default Box を生成する
 
         Returns:
-            torch.Tensor (8732, 4): Default Box (fmt: [cx, cy, w, h])
+            torch.Tensor (8732, 4): Default Box (coord fmt: [cx, cy, w, h])
         """
         def s_(k, m=6, s_min=0.1, s_max=0.88):
             return s_min + (s_max - s_min) * (k - 1) / (m - 1)
@@ -160,10 +153,10 @@ class SSD(DetectionNet):
 
         Args:
             outputs (tuple): (予測オフセット, 予測信頼度)
-                            * 予測オフセット : (B, D, 4) (fmt: [Δcx, Δcy, Δw, Δh])
+                            * 予測オフセット : (B, D, 4) (coord fmt: [Δcx, Δcy, Δw, Δh])
                                     (D: DBoxの数. D = 8732 の想定.)
                             * 予測信頼度     : (B, D, num_classes + 1)
-            gt_bboxes (list): 正解BBOX座標 [(G1, 4), (G2, 4), ...] (fmt: [cx, cy, w, h])
+            gt_bboxes (list): 正解BBOX座標 [(G1, 4), (G2, 4), ...] (coord fmt: [cx, cy, w, h])
             gt_labels (list): 正解ラベル [(G1,), (G2,)]
             iou_thresh (float): Potitive / Negative を判定する際の iou の閾値
             alpha (float): loss = loss_conf + α * loss_loc の α
@@ -265,70 +258,28 @@ class SSD(DetectionNet):
         bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1).contiguous()
         return bboxes
 
-    def predict(self, images: torch.Tensor, image_metas: list, outputs: tuple, norm_cfg: dict = None,
-                conf_thresh: float = 0.4, iou_thresh: float = 0.45, bbox_painter=None) -> list:
-        """ BBox の予測を行う
+    def pre_predict(self, outputs: tuple) -> tuple:
+        """ モデルの出力結果を予測データに変換する
 
         Args:
-            images (torch.Tensor): 画像, (N, 3, 300, 300)
-            image_metas (list): 画像メタ情報
             outputs (tuple): モデルの出力. (予測オフセット, 予測信頼度)
-            norm_cfg (dict): 標準化情報. 画像の復元に使用.
-            conf_thresh (float, optional): 信頼度の閾値. 閾値以下のものは除外する. Defaults to 0.4.
-            iou_thresh (float, optional): NMS での iou の閾値. Defaults to 0.45.
-            bbox_painter ([type], optional): BBox 描画用インスタンス. Defaults to None.
 
         Returns:
-            list: 予測結果のリスト. Coco のフォーマット
+            tuple: (予測BBox, 予測信頼度, 予測クラス)
+                    - 予測BBox   : [N, 8732, 4] (coord fmt: [xmin, ymin, xmax, ymax], 0 ~ 1)
+                    - 予測信頼度 : [N, 8732]
+                    - 予測クラス : [N, 8732]
         """
         out_locs, out_confs = outputs
         out_confs = F.softmax(out_confs, dim=-1)
 
-        # to CPU
-        images = images.detach().cpu()
-        out_locs = out_locs.detach().cpu()
-        out_confs = out_confs.detach().cpu()
+        # result for prediction
+        bboxes = torch.stack([self._calc_coord(locs, self.dboxes) for locs in out_locs])
+        bboxes = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
 
-        for image, image_meta, locs, confs in zip(images, image_metas, out_locs, out_confs):
+        confs, class_ids = out_confs.max(dim=-1)
 
-            # 座標・クラスの復元
-            H, W = image_meta['height'], image_meta['width']
-            confs, class_ids = confs.max(dim=-1)
-            pos_ids = class_ids.nonzero().reshape(-1)  # 0 is background class
-            confs, class_ids = confs[pos_ids], class_ids[pos_ids]
-            valid_ids = confs.gt(conf_thresh).nonzero().reshape(-1)
-            bboxes_valid = self._calc_coord(dbboxes=locs[valid_ids], dboxes=self.dboxes[valid_ids])
-            bboxes_valid = box_convert(bboxes_valid, in_fmt='cxcywh', out_fmt='xyxy') * torch.tensor([W, H, W, H])
-            class_ids_valid = class_ids[valid_ids]
-            confs_valid = confs[valid_ids]
-
-            # 重複の除去（non-maximum supression）
-            keep = batched_nms(bboxes_valid, confs_valid, class_ids_valid, iou_threshold=iou_thresh)
-            bboxes_valid = box_convert(bboxes_valid[keep], in_fmt='xyxy', out_fmt='xywh')
-            confs_valid = confs_valid[keep]
-            class_ids_valid = class_ids_valid[keep]
-
-            result = []
-            for bbox, class_id, conf in zip(bboxes_valid, class_ids_valid, confs_valid):
-                res = {
-                    'image_id': image_meta['image_id'],
-                    'category_id': int(class_id),
-                    'bbox': bbox.numpy().tolist(),
-                    'score': float(conf),
-                }
-                result.append(res)
-
-            if bbox_painter:
-                # De Normalize
-                mean = torch.tensor(norm_cfg['mean']).reshape(3, 1, 1)
-                std = torch.tensor(norm_cfg['std']).reshape(3, 1, 1)
-                image = image * std + mean
-
-                image = bbox_painter.to_pil_image(image, size=(W, H))
-                image = bbox_painter.draw_bbox(image, result)
-                bbox_painter.save(image=image, file_name=f'{image_meta["image_id"]:08}.png')
-
-            return result
+        return bboxes, confs, class_ids
 
 
 if __name__ == '__main__':

@@ -1,18 +1,17 @@
 import argparse
 import torch
 from shutil import rmtree
-from datasets import DetectionDataset
-from torch.utils.data import DataLoader
-from torch.optim import SGD
-from torch.optim.lr_scheduler import MultiStepLR
-from tensorboard.backend.event_processing import event_accumulator
-from torch.utils.tensorboard import SummaryWriter
-from models import SSD
 from pathlib import Path
-from torchsummary import summary
 from tqdm import tqdm
 from collections import defaultdict
-from utils import Evaluator
+
+from datasets import DetectionDataset
+from torch.utils.data import DataLoader
+from models import Model
+from utilities import Config, Optimizer, Scheduler, Predictor, Evaluator
+
+from tensorboard.backend.event_processing import event_accumulator
+from torch.utils.tensorboard import SummaryWriter
 
 
 def chain(loaders: dict) -> tuple:
@@ -32,26 +31,18 @@ def chain(loaders: dict) -> tuple:
 
 # ----------------- パラメータ設定 -----------------
 parser = argparse.ArgumentParser()
-
-parser.add_argument('--data_name', help='same as the directory name placed under ./data', default='voc')
-parser.add_argument('--out_dir', help='directory to save weight files etc', default='./result')
-parser.add_argument('--batch_size', help='batch size of loaded data', type=int, default=32)
-parser.add_argument('--input_size', help='input image size to model', type=int, default=300)
-parser.add_argument('--epochs', help='number of epochs', type=int, default=50)
-parser.add_argument('--version', help='used for output directory name', default='ssd_voc')
-parser.add_argument('--resume', help='set when resuming interrupted learning', action='store_true')
-
+parser.add_argument('config_path', help='config file path')
 args = parser.parse_args()
 # --------------------------------------------------
 
-data_dir = f'./data/{args.data_name}'
+cfg = Config(args.config_path)
 
 # 実行準備
-log_dir = f'{args.out_dir}/{args.version}/logs'
-weights_dir = f'{args.out_dir}/{args.version}/weights'
+log_dir = cfg.runtime['out_dir'] + '/logs'
+weights_dir = cfg.runtime['out_dir'] + '/weights'
 initial_epoch = 1
-if args.resume:
-    for log_path in log_dir.glob('**/events.out.*'):
+if cfg.runtime['resume']:
+    for log_path in Path(log_dir).glob('**/events.out.*'):
         ea = event_accumulator.EventAccumulator(log_path.as_posix())
         ea.Reload()
         if 'loss/train' in ea.Tags()['scalars']:
@@ -65,21 +56,21 @@ else:
 dataloaders = {}
 for phase in ['train', 'val']:
     dataset = DetectionDataset(
-        data_dir=data_dir,
-        input_size=args.input_size,
-        norm_cfg={'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]},
+        data_dir=cfg.data['data_dir'],
+        pipeline=cfg.data[f'{phase}_pipeline'],
+        fmt=cfg.data['bbox_fmt'],
         phase=phase
     )
 
     dataloaders[phase] = DataLoader(
         dataset=dataset,
-        batch_size=args.batch_size,
+        batch_size=cfg.runtime['batch_size'],
         collate_fn=dataset.collate_fn,
         shuffle=phase == 'train'
     )
 
 # モデル
-model = SSD(num_classes=len(dataset.classes))
+model = Model(**cfg.model)
 
 weights_path = f'{weights_dir}/latest.pth'
 if Path(weights_path).exists():
@@ -90,13 +81,12 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
 criterion = model.loss
-optimizer = SGD(params=model.get_parameters(), lr=0.002, momentum=0.9, weight_decay=0.0005)
-scheduler = MultiStepLR(optimizer, milestones=[int(args.epochs * 0.5), int(args.epochs * 0.75)])
+optimizer = Optimizer(params=model.get_parameters(), cfg=cfg.optimizer)
+scheduler = Scheduler(optimizer=optimizer, cfg=cfg.scheduler)
 
-# 推論
-predictor = model.predict
-evaluator = Evaluator(anno_path=f'{data_dir}/annotations/instances_val.json', pred_path='pred_val.json')
-eval_interval = 10
+# 予測・評価
+predictor = Predictor(**cfg.predictor)
+evaluator = Evaluator(**cfg.evaluator)
 
 torch.backends.cudnn.benchmark = True
 
@@ -104,22 +94,19 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 <-><-><-><-><-><-><-> TRAINING START ! <-><-><-><-><-><-><->
 <-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 [CONFIG]
-- version    : {args.version}
-- batch_size : {args.batch_size}
-- epochs     : {args.epochs}
-- out_dir    : {args.out_dir}
+- config     : {args.config_path}
+- batch_size : {cfg.runtime['batch_size']}
+- epochs     : {cfg.runtime['epochs']}
+- out_dir    : {cfg.runtime['out_dir']}
 
 [RUNTIME]
 - {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}
 
 [DATASET]
-- {args.data_name}
+- data_dir   : {cfg.data['data_dir']}
 
 [MODEL]
-- {model.__class__.__name__}{args.input_size}
-
-[MODEL SUMMARY]
-{str(summary(model, (3, args.input_size, args.input_size), verbose=0, depth=2))}
+- {cfg.model['type']}
 
 [OPTIMIZER]
 - {optimizer.__class__.__name__}
@@ -136,7 +123,7 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 ''')
 min_val_loss = 99999
 with SummaryWriter(log_dir=log_dir) as writer:
-    for epoch in range(initial_epoch, args.epochs + initial_epoch):
+    for epoch in range(initial_epoch, cfg.runtime['epochs'] + initial_epoch):
         losses = {'train': defaultdict(lambda: 0), 'val': defaultdict(lambda: 0)}
         counts = {'train': 0, 'val': 0}
         result = []
@@ -163,8 +150,9 @@ with SummaryWriter(log_dir=log_dir) as writer:
             if phase == 'train':
                 loss['loss'].backward()
                 optimizer.step()
-            elif epoch % eval_interval == 0:
-                result += predictor(images, image_metas, outputs)
+            elif epoch % cfg.runtime['eval_interval'] == 0:
+                bboxes, confs, class_ids = model.pre_predict(outputs)
+                result += predictor.run(images, image_metas, bboxes, confs, class_ids)
 
             for kind in loss.keys():
                 losses[phase][kind] += loss[kind].item() * images.size(0)
@@ -185,7 +173,7 @@ with SummaryWriter(log_dir=log_dir) as writer:
         print(f'  val_loss : {losses["val"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["val"].items()])})')
 
         # 評価
-        if epoch % eval_interval == 0:
+        if epoch % cfg.runtime['eval_interval'] == 0:
             if len(result) > 0:
                 evaluator.dump_pred(result)
                 evaluator.run()

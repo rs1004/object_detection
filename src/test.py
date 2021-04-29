@@ -1,59 +1,55 @@
 import argparse
 import torch
 from shutil import rmtree
-from datasets import DetectionDataset
-from torch.utils.data import DataLoader
-from models import SSD
-from utils import BBoxPainter
 from pathlib import Path
 from tqdm import tqdm
 
+from datasets import DetectionDataset
+from torch.utils.data import DataLoader
+from models import Model
+from utilities import Config, Predictor, Evaluator
+
+
 # ----------------- パラメータ設定 -----------------
 parser = argparse.ArgumentParser()
-
-parser.add_argument('--data_name', help='same as the directory name placed under ./data', default='voc')
-parser.add_argument('--out_dir', help='directory to save weight files etc', default='./result')
-parser.add_argument('--batch_size', help='batch size of loaded data', type=int, default=32)
-parser.add_argument('--input_size', help='input image size to model', type=int, default=300)
-parser.add_argument('--version', help='used for output directory name', default='ssd_voc')
-
+parser.add_argument('config_path', help='config file path')
 args = parser.parse_args()
 # --------------------------------------------------
 
-data_dir = f'./data/{args.data_name}'
+cfg = Config(args.config_path)
 
-test_dir = f'{args.out_dir}/{args.version}/test'
-weights_path = f'{args.out_dir}/{args.version}/weights/latest.pth'
+test_dir = cfg.runtime['out_dir'] + '/test'
+weights_path = cfg.runtime['out_dir'] + '/weights/latest.pth'
 rmtree(test_dir, ignore_errors=True)
 Path(test_dir).mkdir(parents=True, exist_ok=True)
 
 # データ生成
 dataset = DetectionDataset(
-    data_dir=data_dir,
-    input_size=args.input_size,
-    norm_cfg={'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]},
+    data_dir=cfg.data['data_dir'],
+    pipeline=cfg.data['val_pipeline'],
+    fmt=cfg.data['bbox_fmt'],
     phase='val'
 )
 
 dataloader = DataLoader(
     dataset=dataset,
-    batch_size=args.batch_size,
+    batch_size=cfg.runtime['batch_size'],
     collate_fn=dataset.collate_fn,
     shuffle=False
 )
 
 # モデル
-model = SSD(num_classes=len(dataset.classes))
+model = Model(**cfg.model)
 
 if Path(weights_path).exists():
     model.load_state_dict(torch.load(weights_path, map_location=torch.device('cpu')))
 
-# 推論・評価
+# 予測・評価
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
-predictor = model.predict
-painter = BBoxPainter(classes=dataset.classes, save_dir=test_dir)
+predictor = Predictor(classes=dataset.classes, out_dir=test_dir, **cfg.predictor)
+evaluator = Evaluator(**cfg.evaluator)
 
 torch.backends.cudnn.benchmark = True
 
@@ -61,18 +57,18 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 <-><-><-><-><-><-><->   TEST START !   <-><-><-><-><-><-><->
 <-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 [CONFIG]
-- version    : {args.version}
-- batch_size : {args.batch_size}
-- out_dir    : {args.out_dir}
+- config     : {args.config_path}
+- batch_size : {cfg.runtime['batch_size']}
+- out_dir    : {cfg.runtime['out_dir']}
 
 [RUNTIME]
 - {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}
 
 [DATASET]
-- {args.data_name}
+- data_dir   : {cfg.data['data_dir']}
 
 [MODEL]
-- {model.__class__.__name__}{args.input_size}
+- {cfg.model['type']}
 
 [WEIGHTS]
 - {weights_path if Path(weights_path).exists() else 'None'}
@@ -83,7 +79,7 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 model.eval()
 torch.set_grad_enabled(False)
 
-num_done = 0
+result = []
 for images, image_metas, gt_bboxes, gt_labels in tqdm(dataloader, total=len(dataloader)):
     # to GPU device
     images = images.to(device)
@@ -91,9 +87,15 @@ for images, image_metas, gt_bboxes, gt_labels in tqdm(dataloader, total=len(data
     # forward
     outputs = model(images)
 
-    # inference + evaluation
-    result = predictor(images, image_metas, outputs, norm_cfg={'mean': [0.485, 0.456, 0.406], 'std': [0.229, 0.224, 0.225]}, bbox_painter=painter)
-    num_done += len(result)
+    # prediction + evaluation
+    bboxes, confs, class_ids = model.pre_predict(outputs)
+    result += predictor.run(images, image_metas, bboxes, confs, class_ids)
 
-    if num_done > 20:
+    if len(result) > 20:
         break
+
+if len(result) > 0:
+    evaluator.dump_pred(result)
+    evaluator.run()
+else:
+    print('No Object Detected. Skip Evaluation')
