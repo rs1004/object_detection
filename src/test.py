@@ -88,6 +88,7 @@ for images, image_metas, gt_bboxes, gt_labels in tqdm(dataloader, total=len(data
     outputs = model(images)
 
     # prediction + evaluation
+    images = images.detach().cpu()
     bboxes, confs, class_ids = model.pre_predict(outputs)
     result += predictor.run(images, image_metas, bboxes, confs, class_ids)
 

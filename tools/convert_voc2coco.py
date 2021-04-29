@@ -47,7 +47,10 @@ def get_images_and_annotations(phase, dst_dir):
     anno_id = 1
     for year in ['2007', '2012']:
         base_dir = data_dir / f'VOC{year}'
-        data_list_path = base_dir / 'ImageSets' / 'Main' / f'{phase}.txt'
+        data_list_path = base_dir / 'ImageSets' / 'Main' / f'{phase}.txt'.replace('val', 'test').replace('train', 'trainval')
+
+        if not data_list_path.exists():
+            continue
 
         with open(data_list_path, 'r') as f:
             file_names = f.read().split('\n')[:-1]

@@ -116,10 +116,7 @@ print(f'''<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 
 [SCHEDULER]
 - {scheduler.__class__.__name__}
-- milestones: lr = {scheduler.get_last_lr()[-1]:.1e} -> {
-    ' -> '.join(
-        f'{scheduler.get_last_lr()[-1] * pow(scheduler.gamma, i):.1e} ({s} epc~)'
-        for i, s in enumerate(scheduler.milestones.keys(), start=1))}
+- state_dict : {scheduler.state_dict()}
 
 <-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
 ''')
@@ -172,9 +169,6 @@ with SummaryWriter(log_dir=log_dir) as writer:
         for i, lr in enumerate(scheduler.get_last_lr(), start=1):
             writer.add_scalar(f'lr/lr_{i}', lr, epoch)
 
-        print(f'  loss     : {losses["train"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["train"].items()])})')
-        print(f'  val_loss : {losses["val"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["val"].items()])})')
-
         # 評価
         if epoch % cfg.runtime['eval_interval'] == 0:
             if len(result) > 0:
@@ -185,8 +179,13 @@ with SummaryWriter(log_dir=log_dir) as writer:
 
         # 重みファイル保存
         if losses['val']['loss'] < min_val_loss:
+            print('saving weight ...')
+            rmtree(weights_path)
             torch.save(model.state_dict(), weights_path)
             min_val_loss = losses['val']['loss']
+
+        print(f'  loss     : {losses["train"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["train"].items()])})')
+        print(f'  val_loss : {losses["val"].pop("loss"):.04f} ({", ".join([f"{kind}: {value:.04f}" for kind, value in losses["val"].items()])})')
 
         # スケジューラ更新
         scheduler.step()
