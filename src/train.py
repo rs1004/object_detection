@@ -50,7 +50,9 @@ if cfg.runtime['resume']:
 else:
     for d in [log_dir, weights_dir]:
         rmtree(d, ignore_errors=True)
-        Path(d).mkdir(parents=True)
+
+for d in [log_dir, weights_dir]:
+    Path(d).mkdir(parents=True)
 
 # データ生成
 dataloaders = {}
