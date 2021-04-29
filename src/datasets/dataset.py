@@ -99,18 +99,41 @@ class DetectionDataset(Dataset):
 
 
 if __name__ == '__main__':
-    pipeline = [
-        dict(type='albu', compose=[
-            dict(type='Resize', height=300, width=300)
-        ]),
-        dict(type='torch', compose=[
-            dict(type='ToTensor'),
+    from PIL import ImageDraw
+
+    size = 300
+    classes = ['aeroplane', 'bicycle', 'bird', 'boat', 'bottle', 'bus', 'car', 'cat', 'chair', 'cow',
+               'diningtable', 'dog', 'horse', 'motorbike', 'person', 'pottedplant', 'sheep', 'sofa', 'train', 'tvmonitor']
+
+    pipeline = dict(
+        albu=[
+            dict(type='RandomScale', scale_limit=(0.8, 1.2)),
+            dict(type='RandomSizedBBoxSafeCrop', height=size, width=size, erosion_rate=0.3),
+            dict(type='HorizontalFlip'),
+            dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
+        ],
+        torch=[
+            dict(type='ToTensor')
+        ],
+        addmeta=[
             dict(type='Normalize', mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-    ]
+        ]
+    )
     ds = DetectionDataset('/home/sato/work/object_detection/data/voc', pipeline)
     image, image_meta, bboxes, labels = ds.__getitem__(0)
     print(image)
     print(image_meta)
     print(bboxes)
     print(labels)
+
+    image = Image.fromarray((image.permute(1, 2, 0) * 255).numpy().astype('uint8'))
+    draw = ImageDraw.Draw(image)
+    for (cx, cy, w, h), label in zip(bboxes, labels):
+        xmin = cx - w/2
+        ymin = cy - h/2
+        xmax = cx + w/2
+        ymax = cy + h/2
+        draw.rectangle((int(xmin * size), int(ymin * size), int(xmax * size), int(ymax * size)), outline=(255, 255, 255), width=3)
+        draw.text((int(xmin * size), int(ymin * size)), classes[int(label)-1])
+
+    image.save('./demo/transformed.png')
