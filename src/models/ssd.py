@@ -298,13 +298,26 @@ class SSD(DetectionNet):
         out_locs, out_confs = outputs
         out_confs = F.softmax(out_confs, dim=-1)
 
-        # result for prediction
-        bboxes = torch.stack([self._calc_coord(locs, self.dboxes) for locs in out_locs])
-        bboxes = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
+        # to CPU
+        out_locs = out_locs.detach().cpu()
+        out_confs = out_confs.detach().cpu()
 
-        confs, class_ids = out_confs.max(dim=-1)
+        pred_bboxes = []
+        pred_confs = []
+        pred_class_ids = []
 
-        return bboxes, confs, class_ids
+        for locs, confs in zip(out_locs, out_confs):
+            confs, class_ids = confs.max(dim=-1)
+            pos_ids = class_ids.nonzero().reshape(-1)  # 0 is background class
+            confs, class_ids = confs[pos_ids], class_ids[pos_ids]
+            bboxes = self._calc_coord(locs[pos_ids], self.dboxes[pos_ids])
+            bboxes = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
+
+            pred_bboxes.append(bboxes)
+            pred_confs.append(confs)
+            pred_class_ids.append(class_ids)
+
+        return pred_bboxes, pred_confs, pred_class_ids
 
 
 if __name__ == '__main__':

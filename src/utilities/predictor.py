@@ -50,14 +50,9 @@ class Predictor:
         Returns:
             list: 最終予測結果
         """
-        # to CPU
-        images = images.detach().cpu()
-        pred_bboxes = pred_bboxes.detach().cpu()
-        pred_confs = pred_confs.detach().cpu()
-        pred_class_ids = pred_class_ids.detach().cpu()
-
         result = []
         for image, image_meta, bboxes, confs, class_ids in zip(images, image_metas, pred_bboxes, pred_confs, pred_class_ids):
+
             # 低信頼度のものを除去
             valid_ids = confs.gt(self.conf_thresh).nonzero().reshape(-1)
             bboxes = bboxes[valid_ids]

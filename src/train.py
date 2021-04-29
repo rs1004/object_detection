@@ -153,6 +153,7 @@ with SummaryWriter(log_dir=log_dir) as writer:
                 loss['loss'].backward()
                 optimizer.step()
             elif epoch % cfg.runtime['eval_interval'] == 0:
+                images = images.detach().cpu()
                 bboxes, confs, class_ids = model.pre_predict(outputs)
                 result += predictor.run(images, image_metas, bboxes, confs, class_ids)
 

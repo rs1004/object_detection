@@ -50,7 +50,7 @@ runtime = dict(
     epochs=100,
     out_dir=__out_dir,
     resume=False,
-    eval_interval=1
+    eval_interval=10
 )
 
 # 予測・評価
