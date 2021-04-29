@@ -23,30 +23,9 @@ class DetectionNet(nn.Module, metaclass=ABCMeta):
                     nn.init.constant_(m.weight, 1)
                     nn.init.constant_(m.bias, 0)
 
-    def get_parameters(self, lrs: dict = {'features': 0.0001, '_': 0.002}) -> list:
-        """ 学習パラメータと学習率の一覧を取得する
-
-        Args:
-            lrs (dict, optional): 学習率の一覧. Defaults to {'features': 0.0001, '_': 0.001}.
-
-        Returns:
-            list: 学習パラメータと学習率の一覧
-        """
-        params_no_decay = []
-        params_else = []
-
-        for name, param in self.named_parameters():
-            if len(param.shape) == 1:
-                params_no_decay.append(param)
-            else:
-                params_else.append(param)
-
-        params = [
-            {'params': params_no_decay, 'weight_decay': 0.0},
-            {'params': params_else},
-        ]
-
-        return params
+    @abstractmethod
+    def get_parameters(self) -> list:
+        pass
 
     @abstractmethod
     def forward(self, x: torch.Tensor):
