@@ -4,7 +4,7 @@ __input_size = 300
 __version = 'ssd_vgg16bn_voc_aug'
 
 __data_dir = __root_dir + '/data/' + __data
-__out_dir = __root_dir + '/result/' + __version
+__out_dir = '/content/drive/MyDrive/result/' + __version
 
 # データ
 __mean = [0.485, 0.456, 0.406]
