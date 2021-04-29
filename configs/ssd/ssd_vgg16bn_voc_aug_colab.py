@@ -46,7 +46,7 @@ model = dict(type='ssd', num_classes=20, backborn='vgg16_bn', backborn_weight=No
 optimizer = dict(type='SGD', lr=0.002, momentum=0.9, weight_decay=0.0005)
 scheduler = dict(type='MultiStepLRWarmUpRestarts', milestones=[50, 75], gamma=0.1, eta_min=0.0001, T_up=10)
 runtime = dict(
-    batch_size=2,
+    batch_size=32,
     epochs=100,
     out_dir=__out_dir,
     resume=False,
