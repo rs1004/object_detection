@@ -1,4 +1,4 @@
-__root_dir = '/home/sato/work/object_detection'
+__root_dir = '/content/object_detection'
 __data = 'voc'
 __input_size = 300
 __version = 'ssd_vgg16bn_voc_aug'
