@@ -1,11 +1,7 @@
-from .ssd import SSD  # noqa
-from torchvision.models import vgg16, vgg16_bn
+from .ssd import SSD
+from torchvision.models import *  # noqa
 import torch
 
-BACKBORNS = {
-    'vgg16': vgg16,
-    'vgg16_bn': vgg16_bn
-}
 
 MODELS = {
     'ssd': SSD
@@ -13,7 +9,7 @@ MODELS = {
 
 
 def Model(type: str, num_classes: int, backborn: str, backborn_weight: str = None):
-    m = BACKBORNS[backborn]
+    m = eval(backborn)
     if backborn_weight:
         backborn = m(pretrained=False)
         backborn.load_state_dict(torch.load(backborn_weight), strict=False)

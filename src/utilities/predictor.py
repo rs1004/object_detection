@@ -2,6 +2,7 @@ import torch
 import seaborn as sns
 from torchvision.ops import box_convert, batched_nms
 from PIL import Image, ImageDraw, ImageFont
+from pathlib import Path
 
 
 class Predictor:
@@ -92,7 +93,7 @@ class Predictor:
 
     def _draw_bbox(self, image: Image, result: list) -> Image:
         draw = ImageDraw.Draw(image)
-        font = ImageFont.truetype('arial.ttf')
+        font = ImageFont.truetype((Path(__file__).parent / 'Roboto-Regular.ttf').as_posix())
 
         for res in result:
             x, y, w, h = res['bbox']
