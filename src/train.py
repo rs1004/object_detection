@@ -180,7 +180,7 @@ with SummaryWriter(log_dir=log_dir) as writer:
         # 重みファイル保存
         if losses['val']['loss'] < min_val_loss:
             print('saving weight ...')
-            rmtree(weights_path)
+            rmtree(weights_path, ignore_errors=True)
             torch.save(model.state_dict(), weights_path)
             min_val_loss = losses['val']['loss']
 
