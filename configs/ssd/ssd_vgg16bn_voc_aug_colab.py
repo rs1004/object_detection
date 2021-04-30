@@ -43,6 +43,10 @@ data = dict(
 model = dict(type='ssd', num_classes=20, backborn='vgg16_bn', backborn_weight=None)
 
 # 学習
+train_conditions = [
+    dict(keys=['bn', 'bias', '4_3.0'], weight_decay=0.0),
+    dict(keys=['.'])
+]
 optimizer = dict(type='SGD', lr=0.002, momentum=0.9, weight_decay=0.0005)
 scheduler = dict(type='MultiStepLRWarmUpRestarts', milestones=[50, 75], gamma=0.1, eta_min=0.0001, T_up=10)
 runtime = dict(

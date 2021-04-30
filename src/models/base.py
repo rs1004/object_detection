@@ -23,9 +23,34 @@ class DetectionNet(nn.Module, metaclass=ABCMeta):
                     nn.init.constant_(m.weight, 1)
                     nn.init.constant_(m.bias, 0)
 
-    @abstractmethod
-    def get_parameters(self) -> list:
-        pass
+    def get_parameters(self, train_conditions: list) -> list:
+        """ 学習パラメータを取得する
+
+        Args:
+            train_conditions (list): 学習パラメータの振り分けの条件
+
+        Returns:
+            list: 学習パラメータ一覧
+        """
+        for name, param in self.named_parameters():
+            for i in range(len(train_conditions)):
+                if any(k in name for k in train_conditions[i]['keys']):
+                    if train_conditions[i].get('lr', None) == 0:
+                        param.requires_grad = False
+                    else:
+                        if 'params' not in train_conditions[i]:
+                            train_conditions[i]['params'] = []
+                        train_conditions[i]['params'].append(param.shape)
+                    break
+
+        params_to_update = []
+        for d in train_conditions:
+            if 'params' not in d:
+                continue
+            d.pop('keys')
+            params_to_update.append(d)
+
+        return params_to_update
 
     @abstractmethod
     def forward(self, x: torch.Tensor):

@@ -11,6 +11,7 @@ class Config:
 
         self.data = m.data
         self.model = m.model
+        self.train_conditions = m.train_conditions
         self.optimizer = m.optimizer
         self.scheduler = m.scheduler
         self.runtime = m.runtime

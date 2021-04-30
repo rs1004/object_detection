@@ -148,31 +148,6 @@ class SSD(DetectionNet):
         dboxes = torch.tensor(dboxes)
         return dboxes
 
-    def get_parameters(self) -> list:
-        """ 学習パラメータのリストを取得する
-
-        1) パラメータの次元が1 (ex. BatchNorm の weight) -> weight_decay を 0 に設定
-        2) その他 -> weight_decay をデフォルト値に設定
-
-        Returns:
-            list: 学習パラメータのリスト
-        """
-        params_no_decay = []
-        params_else = []
-
-        for name, param in self.named_parameters():
-            if len(param.shape) == 1:
-                params_no_decay.append(param)
-            else:
-                params_else.append(param)
-
-        params = [
-            {'params': params_no_decay, 'weight_decay': 0.0},
-            {'params': params_else},
-        ]
-
-        return params
-
     def loss(self, outputs: tuple, gt_bboxes: list, gt_labels: list, iou_thresh: float = 0.5, alpha: float = 1.0) -> dict:
         """ 損失関数
 
