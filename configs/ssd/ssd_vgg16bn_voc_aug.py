@@ -20,9 +20,7 @@ data = dict(
             dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
         ],
         torch=[
-            dict(type='ToTensor')
-        ],
-        addmeta=[
+            dict(type='ToTensor'),
             dict(type='Normalize', mean=__mean, std=__std)
         ]
     ),
@@ -31,9 +29,7 @@ data = dict(
             dict(type='Resize', height=__input_size, width=__input_size)
         ],
         torch=[
-            dict(type='ToTensor')
-        ],
-        addmeta=[
+            dict(type='ToTensor'),
             dict(type='Normalize', mean=__mean, std=__std)
         ]
     )

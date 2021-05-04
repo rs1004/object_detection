@@ -6,23 +6,12 @@ class Compose:
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, *args):
-        for t in self.transforms:
-            args = t(*args)
-        return args
-
-
-class Normalize:
-    def __init__(self, mean, std):
-        self.mean = mean
-        self.std = std
-        self.normalize = T.Normalize(mean, std)
-
     def __call__(self, image, image_meta):
-        image = self.normalize(image)
-        image_meta['norm_mean'] = self.mean
-        image_meta['norm_std'] = self.std
-
+        for t in self.transforms:
+            if isinstance(t, T.Normalize):
+                image_meta['norm_mean'] = t.mean
+                image_meta['norm_std'] = t.std
+            image = t(image)
         return image, image_meta
 
 
@@ -40,7 +29,6 @@ class Pipeline:
     def __init__(self, pipeline: dict):
         self.albu_pipeline = self._build_albu(pipeline['albu'])
         self.torch_pipeline = self._build_torch(pipeline['torch'])
-        self.addmeta_pipeline = self._build_addmeta(pipeline['addmeta'])
 
     def __call__(self, image, image_meta, bboxes, labels):
         # albumentations process
@@ -52,10 +40,7 @@ class Pipeline:
         ).values()
 
         # torchvision process
-        image = self.torch_pipeline(image)
-
-        # original transform process
-        image, image_meta = self.addmeta_pipeline(image, image_meta)
+        image, image_meta = self.torch_pipeline(image, image_meta)
 
         return image, image_meta, bboxes, labels
 
@@ -72,10 +57,4 @@ class Pipeline:
         transforms = []
         for cfg in pipe_cfg:
             transforms.append(eval('T.' + cfg.pop('type'))(**cfg))
-        return T.Compose(transforms)
-
-    def _build_addmeta(self, pipe_cfg):
-        transforms = []
-        for cfg in pipe_cfg:
-            transforms.append(eval(cfg.pop('type'))(**cfg))
         return Compose(transforms)
