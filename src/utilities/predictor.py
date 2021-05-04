@@ -93,7 +93,7 @@ class Predictor:
 
     def _draw_bbox(self, image: Image, result: list) -> Image:
         draw = ImageDraw.Draw(image)
-        font = ImageFont.truetype((Path(__file__).parent / 'Roboto-Regular.ttf').as_posix())
+        font = ImageFont.truetype((Path(__file__).parent / 'Roboto-Regular.ttf').as_posix(), size=20)
 
         for res in result:
             x, y, w, h = res['bbox']

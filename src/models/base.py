@@ -19,9 +19,6 @@ class DetectionNet(nn.Module, metaclass=ABCMeta):
                     # He の初期化
                     # [memo] sigmoid, tanh を使う場合はXavierの初期値, Relu を使用する場合は He の初期値を使用する
                     nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                elif isinstance(m, nn.BatchNorm2d):
-                    nn.init.constant_(m.weight, 1)
-                    nn.init.constant_(m.bias, 0)
 
     def get_parameters(self, train_conditions: list) -> list:
         """ 学習パラメータを取得する
