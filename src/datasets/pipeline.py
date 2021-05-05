@@ -1,3 +1,5 @@
+import torch
+import torch.nn as nn
 import albumentations as A
 import torchvision.transforms as T
 
@@ -13,6 +15,30 @@ class Compose:
                 image_meta['norm_std'] = t.std
             image = t(image)
         return image, image_meta
+
+
+class GridErasing(nn.Module):
+    def __init__(self, p=0.5, min_stride_ratio=0.1, max_stride_ratio=0.2):
+        super(GridErasing, self).__init__()
+        self.p = p
+        self.min_stride_ratio = min_stride_ratio
+        self.max_stride_ratio = max_stride_ratio
+
+    def forward(self, x):
+        # get params
+        stride = int(x.size(-1) * ((self.max_stride_ratio - self.min_stride_ratio) * torch.rand(1) + self.min_stride_ratio))
+        grid_size = int(torch.randint(int(stride * 0.3), int(stride * 0.7), (1, )))
+
+        grid_hws = torch.cartesian_prod(
+            torch.arange(int(torch.randint(0, stride, (1,))), x.size(1), stride),
+            torch.arange(int(torch.randint(0, stride, (1,))), x.size(2), stride)
+        )
+
+        for h, w in grid_hws:
+            if torch.rand(1) < self.p:
+                erase = torch.empty_like(x[..., h:h+grid_size, w:w+grid_size], dtype=torch.float32).normal_()
+                x[..., h:h+grid_size, w:w+grid_size] = erase
+        return x
 
 
 class Pipeline:
@@ -56,5 +82,9 @@ class Pipeline:
     def _build_torch(self, pipe_cfg):
         transforms = []
         for cfg in pipe_cfg:
-            transforms.append(eval('T.' + cfg.pop('type'))(**cfg))
+            type = cfg.pop('type')
+            try:
+                transforms.append(eval('T.' + type)(**cfg))
+            except AttributeError:
+                transforms.append(eval(type)(**cfg))
         return Compose(transforms)

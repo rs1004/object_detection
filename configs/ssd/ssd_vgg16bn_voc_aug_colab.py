@@ -14,13 +14,14 @@ data = dict(
     bbox_fmt='cxcywh',
     train_pipeline=dict(
         albu=[
-            dict(type='RandomScale', scale_limit=(0.8, 1.2)),
-            dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.3),
+            dict(type='RandomScale', scale_limit=(0.7, 2.0)),
+            dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.7),
             dict(type='HorizontalFlip'),
             dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
         ],
         torch=[
             dict(type='ToTensor'),
+            dict(type='GridErasing', min_stride_ratio=0.1, max_stride_ratio=0.2),
             dict(type='Normalize', mean=__mean, std=__std)
         ]
     ),

@@ -108,13 +108,13 @@ if __name__ == '__main__':
     pipeline = dict(
         albu=[
             dict(type='RandomScale', scale_limit=(0.7, 2.0)),
-            dict(type='RandomSizedBBoxSafeCrop', height=size, width=size, erosion_rate=0.1),
+            dict(type='RandomSizedBBoxSafeCrop', height=size, width=size, erosion_rate=0.7),
             dict(type='HorizontalFlip'),
             dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
         ],
         torch=[
             dict(type='ToTensor'),
-            dict(type='RandomErasing', scale=(0.02, 0.1), ratio=(0.3, 3.3), value='random'),
+            dict(type='GridErasing', min_stride_ratio=0.1, max_stride_ratio=0.2),
             dict(type='Normalize', mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ]
     )
