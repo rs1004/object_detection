@@ -19,7 +19,7 @@ data = dict(
     bbox_fmt='cxcywh',
     train_pipeline=dict(
         albu=[
-            dict(type='ShiftScaleRotate', rotate_limit=15, scale_limit=0.5),
+            dict(type='ShiftScaleRotate', rotate_limit=15, scale_limit=(-0.5, 0.0)),
             dict(type='PadIfNeeded', min_height=300, min_width=300),
             dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.4),
             dict(type='RGBShift'),
@@ -54,7 +54,7 @@ train_conditions = [
 optimizer = dict(type='SGD', lr=0.0026, momentum=0.9, weight_decay=0.0005)
 scheduler = dict(type='CosineAnnealingWarmUpRestarts', gamma=0.80, eta_min=0.0001, T_up=10, T_0=50)
 runtime = dict(
-    batch_size=2,
+    batch_size=32,
     epochs=150,
     out_dir=__out_dir,
     resume=False,
