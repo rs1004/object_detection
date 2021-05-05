@@ -5,7 +5,7 @@ __data = 'voc'
 __input_size = 300
 __version = 'ssd_vgg16bn_voc_aug'
 
-if '/content/' in Path(__file__).resolve().as_posix():
+if Path('/content/object_detection').exists():
     __data_dir = '/content/object_detection/data/' + __data
     __out_dir = '/content/drive/MyDrive/result/' + __version
 else:

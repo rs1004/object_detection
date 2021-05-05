@@ -108,7 +108,7 @@ if __name__ == '__main__':
     pipeline = dict(
         albu=[
             dict(type='RandomScale', scale_limit=(0.7, 2.0)),
-            dict(type='RandomSizedBBoxSafeCrop', height=size, width=size, erosion_rate=0.7),
+            dict(type='RandomSizedBBoxSafeCrop', height=size, width=size, erosion_rate=0.4),
             dict(type='HorizontalFlip'),
             dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
         ],

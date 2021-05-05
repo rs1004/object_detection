@@ -4,7 +4,7 @@ __data = 'voc'
 __input_size = 300
 __version = 'ssd_vgg16bn_voc_aug_strong'
 
-if '/content/' in Path(__file__).resolve().as_posix():
+if Path('/content/object_detection').exists():
     __data_dir = '/content/object_detection/data/' + __data
     __out_dir = '/content/drive/MyDrive/result/' + __version
 else:
@@ -20,7 +20,7 @@ data = dict(
     train_pipeline=dict(
         albu=[
             dict(type='RandomScale', scale_limit=(0.7, 2.0)),
-            dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.5),
+            dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.4),
             dict(type='HorizontalFlip'),
             dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
         ],
@@ -49,8 +49,8 @@ train_conditions = [
     dict(keys=['bn', 'bias', '4_3.0'], weight_decay=0.0),
     dict(keys=['.'])
 ]
-optimizer = dict(type='SGD', lr=0.002, momentum=0.9, weight_decay=0.0005)
-scheduler = dict(type='CosineAnnealingWarmUpRestarts', T_0=30, T_mult=1, eta_min=0.0001, T_up=10, gamma=0.5)
+optimizer = dict(type='SGD', lr=0.0026, momentum=0.9, weight_decay=0.0005)
+scheduler = dict(type='ExponentialLRWarmUpRestarts', gamma=0.97, eta_min=0.0001, T_up=10)
 runtime = dict(
     batch_size=32,
     epochs=150,
