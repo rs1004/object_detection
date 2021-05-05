@@ -37,7 +37,7 @@ class DetectionNet(nn.Module, metaclass=ABCMeta):
                     else:
                         if 'params' not in train_conditions[i]:
                             train_conditions[i]['params'] = []
-                        train_conditions[i]['params'].append(param.shape)
+                        train_conditions[i]['params'].append(param)
                     break
 
         params_to_update = []

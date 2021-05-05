@@ -1,10 +1,15 @@
-__root_dir = '/content/object_detection'
+from pathlib import Path
+
 __data = 'voc'
 __input_size = 300
-__version = 'ssd_vgg16bn_voc_aug'
+__version = 'ssd_vgg16bn_voc_aug_strong'
 
-__data_dir = __root_dir + '/data/' + __data
-__out_dir = '/content/drive/MyDrive/result/' + __version
+if '/content/' in Path(__file__).resolve().as_posix():
+    __data_dir = '/content/object_detection/data/' + __data
+    __out_dir = '/content/drive/MyDrive/result/' + __version
+else:
+    __data_dir = '/home/sato/work/object_detection/data/' + __data
+    __out_dir = '/home/sato/work/object_detection/result/' + __version
 
 # データ
 __mean = [0.485, 0.456, 0.406]
@@ -15,7 +20,7 @@ data = dict(
     train_pipeline=dict(
         albu=[
             dict(type='RandomScale', scale_limit=(0.7, 2.0)),
-            dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.7),
+            dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.5),
             dict(type='HorizontalFlip'),
             dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
         ],
