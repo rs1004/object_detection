@@ -50,10 +50,10 @@ train_conditions = [
     dict(keys=['.'])
 ]
 optimizer = dict(type='SGD', lr=0.002, momentum=0.9, weight_decay=0.0005)
-scheduler = dict(type='MultiStepLRWarmUpRestarts', milestones=[50, 75], gamma=0.1, eta_min=0.0001, T_up=10)
+scheduler = dict(type='CosineAnnealingWarmUpRestarts', T_0=30, T_mult=1, eta_min=0.0001, T_up=10, gamma=0.5)
 runtime = dict(
     batch_size=32,
-    epochs=100,
+    epochs=150,
     out_dir=__out_dir,
     resume=False,
     eval_interval=10
