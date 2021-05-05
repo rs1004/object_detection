@@ -52,7 +52,7 @@ train_conditions = [
     dict(keys=['.'])
 ]
 optimizer = dict(type='SGD', lr=0.0026, momentum=0.9, weight_decay=0.0005)
-scheduler = dict(type='CosineAnnealingWarmUpRestarts', gamma=0.97, eta_min=0.0001, T_up=10, T_0=30)
+scheduler = dict(type='CosineAnnealingWarmUpRestarts', gamma=0.80, eta_min=0.0001, T_up=10, T_0=50)
 runtime = dict(
     batch_size=2,
     epochs=150,
