@@ -192,8 +192,7 @@ class YoloV3(DetectionNet):
             #   Positive / Negative Box に対して、Objectness Loss を計算する
             objs_pos = objs[pos_ids]
             objs_neg = objs[neg_ids]
-            loss_obj += (1 / N) * F.binary_cross_entropy_with_logits(objs_pos, torch.ones_like(objs_pos), reduction='sum') + \
-                (1 / M) * F.binary_cross_entropy_with_logits(objs_neg, torch.zeros_like(objs_neg), reduction='sum')
+            loss_obj += (1 / N) * objs_pos.sigmoid().log().sum() + (1 / M) * (1 - objs_neg.sigmoid()).log().sum()
 
         # [Step 4]
         #   損失の和を計算する
