@@ -183,16 +183,16 @@ class YoloV3(DetectionNet):
             # [Step 3]
             #   Positive Box に対して、Confidence Loss を計算する
             #   labels は 1 開始なので 0 開始に修正する
-            labels.sub_(1)
+            labels = labels - 1
             confs_pos = confs[pos_ids]
             labels_pos = labels[pos_ids]
             loss_conf += (1 / N) * F.cross_entropy(confs_pos, labels_pos, reduction='sum')
 
             # [Step 4]
             #   Positive / Negative Box に対して、Objectness Loss を計算する
-            objs_pos = objs[pos_ids]
-            objs_neg = objs[neg_ids]
-            loss_obj += (1 / N) * objs_pos.sigmoid().log().sum() + (1 / M) * (1 - objs_neg.sigmoid()).log().sum()
+            targets = (max_ious.reshape(objs.shape) >= iou_thresh).float()
+            bce = F.binary_cross_entropy_with_logits(objs, targets, reduction='none')
+            loss_obj += (1 / N) * bce[pos_ids].sum() + (1 / M) * bce[neg_ids].sum()
 
         # [Step 4]
         #   損失の和を計算する
