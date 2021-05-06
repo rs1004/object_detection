@@ -56,7 +56,7 @@ class SSD(DetectionNet):
             'conv11_2': nn.Conv2d(in_channels=256, out_channels=4 * self.nc, kernel_size=3, padding=1),
         })
 
-        self.dboxes = self._get_dboxes()
+        self.dboxes = self._get_default_boxes()
 
         self.init_weights(blocks=[self.extras, self.localizers, self.classifiers])
 
@@ -120,7 +120,7 @@ class SSD(DetectionNet):
 
         return features
 
-    def _get_dboxes(self) -> torch.Tensor:
+    def _get_default_boxes(self) -> torch.Tensor:
         """ Default Box を生成する
 
         Returns:
