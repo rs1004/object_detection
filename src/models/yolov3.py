@@ -190,9 +190,10 @@ class YoloV3(DetectionNet):
 
             # [Step 4]
             #   Positive / Negative Box に対して、Objectness Loss を計算する
-            targets = (max_ious.reshape(objs.shape) >= iou_thresh).float()
-            bce = F.binary_cross_entropy_with_logits(objs, targets, reduction='none')
-            loss_obj += (1 / N) * bce[pos_ids].sum() + (1 / M) * bce[neg_ids].sum()
+            objs_pos = objs[pos_ids]
+            objs_neg = objs[neg_ids]
+            loss_obj += (1 / N) * F.binary_cross_entropy_with_logits(objs_pos, torch.ones_like(objs_pos), reduction='sum') + \
+                (1 / M) * F.binary_cross_entropy_with_logits(objs_neg, torch.zeros_like(objs_neg), reduction='sum')
 
         # [Step 4]
         #   損失の和を計算する
@@ -223,20 +224,20 @@ class YoloV3(DetectionNet):
         dbboxes = torch.stack([db_cx, db_cy, db_w, db_h], dim=1).contiguous()
         return dbboxes
 
-    def _calc_coord(self, dbboxes: torch.Tensor, dboxes: torch.Tensor) -> torch.Tensor:
+    def _calc_coord(self, dbboxes: torch.Tensor, pboxes: torch.Tensor) -> torch.Tensor:
         """ g を算出する
 
         Args:
             dbboxes (torch.Tensor, [X, 4]): Offset Prediction
-            dboxes (torch.Tensor, [X, 4]): Default Box
+            pboxes (torch.Tensor, [X, 4]): Prior Box
 
         Returns:
             torch.Tensor: [X, 4]
         """
-        b_cx = dboxes[:, 0] + dbboxes[:, 0] * dboxes[:, 2]
-        b_cy = dboxes[:, 1] + dbboxes[:, 1] * dboxes[:, 3]
-        b_w = dboxes[:, 2] * dbboxes[:, 2].exp()
-        b_h = dboxes[:, 3] * dbboxes[:, 3].exp()
+        b_cx = pboxes[:, 0] + dbboxes[:, 0] * pboxes[:, 2]
+        b_cy = pboxes[:, 1] + dbboxes[:, 1] * pboxes[:, 3]
+        b_w = pboxes[:, 2] * dbboxes[:, 2].exp()
+        b_h = pboxes[:, 3] * dbboxes[:, 3].exp()
 
         bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1).contiguous()
         return bboxes
@@ -272,7 +273,7 @@ class YoloV3(DetectionNet):
             class_ids.add_(1)
             pos_ids = objs.gt(0.5).reshape(-1).nonzero().reshape(-1)
             confs, class_ids = confs[pos_ids], class_ids[pos_ids]
-            bboxes = self._calc_coord(locs[pos_ids], self.dboxes[pos_ids])
+            bboxes = self._calc_coord(locs[pos_ids], self.pboxes[pos_ids])
             bboxes = box_convert(bboxes, in_fmt='xywh', out_fmt='xyxy')
 
             pred_bboxes.append(bboxes)
@@ -293,3 +294,5 @@ if __name__ == '__main__':
     x = torch.rand(2, 3, 416, 416)
     out_locs, out_objs, out_confs = model(x)
     print(out_locs.shape)
+    for name, m in model.named_parameters():
+        print(name, len(m.shape))
