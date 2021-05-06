@@ -80,6 +80,7 @@ class Darknet53(nn.Module):
         if Path(save_path).exists():
             self.load_state_dict(torch.load(save_path, map_location=torch.device('cpu')))
         else:
+            Path(save_path).parent.mkdir(parents=True, exist_ok=True)
             url = 'https://pjreddie.com/media/files/yolov3.weights'
             req = urllib.request.Request(url)
             print('Downloading: "{}" to {}\n'.format(url, save_path))

@@ -19,8 +19,6 @@ data = dict(
     bbox_fmt='cxcywh',
     train_pipeline=dict(
         albu=[
-            dict(type='ShiftScaleRotate', rotate_limit=15, scale_limit=(-0.5, 0.0)),
-            dict(type='PadIfNeeded', min_height=300, min_width=300),
             dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.4),
             dict(type='RGBShift'),
             dict(type='HorizontalFlip'),

@@ -107,8 +107,6 @@ if __name__ == '__main__':
 
     pipeline = dict(
         albu=[
-            dict(type='ShiftScaleRotate', rotate_limit=15, scale_limit=(-0.5, 0.0)),
-            dict(type='PadIfNeeded', min_height=300, min_width=300),
             dict(type='RandomSizedBBoxSafeCrop', height=size, width=size, erosion_rate=0.4),
             dict(type='RGBShift'),
             dict(type='HorizontalFlip'),
@@ -121,20 +119,19 @@ if __name__ == '__main__':
         ]
     )
     ds = DetectionDataset('/home/sato/work/object_detection/data/voc', pipeline)
-    image, image_meta, bboxes, labels = ds.__getitem__(0)
-    print(image)
-    print(image_meta)
-    print(bboxes)
-    print(labels)
 
-    image = Image.fromarray((image.permute(1, 2, 0) * 255).numpy().astype('uint8'))
-    draw = ImageDraw.Draw(image)
-    for (cx, cy, w, h), label in zip(bboxes, labels):
-        xmin = cx - w/2
-        ymin = cy - h/2
-        xmax = cx + w/2
-        ymax = cy + h/2
-        draw.rectangle((int(xmin * size), int(ymin * size), int(xmax * size), int(ymax * size)), outline=(255, 255, 255), width=3)
-        draw.text((int(xmin * size), int(ymin * size)), classes[int(label)-1])
+    images = []
+    for _ in range(20):
+        image, image_meta, bboxes, labels = ds.__getitem__(0)
+        image = Image.fromarray((image.permute(1, 2, 0) * 255).numpy().astype('uint8'))
+        draw = ImageDraw.Draw(image)
+        for (cx, cy, w, h), label in zip(bboxes, labels):
+            xmin = cx - w/2
+            ymin = cy - h/2
+            xmax = cx + w/2
+            ymax = cy + h/2
+            draw.rectangle((int(xmin * size), int(ymin * size), int(xmax * size), int(ymax * size)), outline=(255, 255, 255), width=3)
+            draw.text((int(xmin * size), int(ymin * size)), classes[int(label)-1])
 
-    image.save('./demo/transformed.png')
+        images.append(image.copy())
+    images[0].save('./demo/transformed.gif', save_all=True, append_images=images[1:], duration=1000)
