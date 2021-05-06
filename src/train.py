@@ -52,7 +52,7 @@ else:
         rmtree(d, ignore_errors=True)
 
 for d in [log_dir, weights_dir]:
-    Path(d).mkdir(parents=True)
+    Path(d).mkdir(parents=True, exist_ok=True)
 
 # データ生成
 dataloaders = {}
