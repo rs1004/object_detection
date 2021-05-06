@@ -1,10 +1,13 @@
 from .ssd import SSD
+from .yolov3 import YoloV3
+from .darknet import Darknet53  # noqa
 from torchvision.models import *  # noqa
 import torch
 
 
 MODELS = {
-    'ssd': SSD
+    'ssd': SSD,
+    'yolov3': YoloV3
 }
 
 
