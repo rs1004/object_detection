@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, in_channels=None, out_channels=None, kernel_size=None, stride=1, padding=0, is_bn=True, args=None):
+    def __init__(self, in_channels=None, out_channels=None, kernel_size=None, stride=1, padding=0, is_bn=True, act='relu', args=None):
         super(ConvBlock, self).__init__()
         if args is not None:
             self.conv = args.get('conv')
@@ -12,7 +12,12 @@ class ConvBlock(nn.Module):
         else:
             self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding)
             self.bn = nn.BatchNorm2d(out_channels) if is_bn else nn.Identity()
-            self.act = nn.ReLU(inplace=True)
+            if act == 'relu':
+                self.act = nn.ReLU(inplace=True)
+            elif act == 'leaky':
+                self.act = nn.LeakyReLU(negative_slope=0.1)
+            else:
+                raise NotImplementedError(f' "{act} " is unexpected')
 
     def forward(self, x):
         out = self.act(self.bn(self.conv(x)))
@@ -36,6 +41,16 @@ class L2Norm(nn.Module):
         x = torch.div(x, norm)
         out = self.weight.unsqueeze(0).unsqueeze(2).unsqueeze(3).expand_as(x) * x
         return out
+
+
+class Concatenate(nn.Module):
+    def __init__(self, keys: list):
+        super(Concatenate, self).__init__()
+        self.keys = keys
+
+    def forward(self, x1, x2):
+        x = torch.cat([x1, x2], dim=1)
+        return x
 
 
 if __name__ == '__main__':
