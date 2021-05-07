@@ -160,16 +160,21 @@ class YoloV3(DetectionNet):
 
             # [Step 1]
             #   各 Prior Box を BBox に対応させ、Positive, Negative の判定を行う
-            #   - max_iou >= 0.5 の場合、Positive Box とみなし、最大 iou の BBox を対応させる
+            #   - 各 BBox に対し、最も IoU が高い Prior Box を取得する
+            #       - その Prior Box との IoU が >= 0.5 の場合、 Positive Box とみなす
+            #       - i.e. 各 BBox に対応する Prior Box はただ一つになる
             #   - max_iou <  0.5 の場合、Negative Box とみなす
             #   - N := Positive Box の個数。N = 0 ならば Loss = 0 とする（skip する）
             bboxes_xyxy = box_convert(bboxes, in_fmt='xywh', out_fmt='xyxy')
             pboxes_xyxy = box_convert(pboxes, in_fmt='xywh', out_fmt='xyxy')
-            max_ious, bbox_ids = box_iou(pboxes_xyxy, bboxes_xyxy).max(dim=1)
+            ious = box_iou(pboxes_xyxy, bboxes_xyxy)
+            max_ious, pbox_ids = ious.max(dim=0)
+            pos_ids = pbox_ids[(max_ious >= iou_thresh).nonzero().reshape(-1)]
+            bbox_ids = torch.arange(ious.size(1))[(max_ious >= iou_thresh).nonzero().reshape(-1)]
             bboxes, labels = bboxes[bbox_ids], labels[bbox_ids]
-            pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().reshape(-1), (max_ious < iou_thresh).nonzero().reshape(-1)
+            neg_ids = (ious.max(dim=1).values < iou_thresh).nonzero().reshape(-1)
+
             N = len(pos_ids)
-            M = len(neg_ids)
             if N == 0:
                 continue
 
@@ -178,7 +183,7 @@ class YoloV3(DetectionNet):
             bboxes_pos = bboxes[pos_ids]
             pboxes_pos = pboxes[pos_ids]
             dbboxes_pos = self._calc_delta(bboxes=bboxes_pos, pboxes=pboxes_pos)
-            loss_loc += (1 / N) * F.mse_loss(locs[pos_ids], dbboxes_pos, reduction='sum')
+            loss_loc += F.mse_loss(locs[pos_ids], dbboxes_pos, reduction='sum')
 
             # [Step 3]
             #   Positive Box に対して、Confidence Loss を計算する
@@ -186,14 +191,14 @@ class YoloV3(DetectionNet):
             labels = labels - 1
             confs_pos = confs[pos_ids]
             labels_pos = labels[pos_ids]
-            loss_conf += (1 / N) * F.cross_entropy(confs_pos, labels_pos, reduction='sum')
+            loss_conf += F.cross_entropy(confs_pos, labels_pos, reduction='sum')
 
             # [Step 4]
             #   Positive / Negative Box に対して、Objectness Loss を計算する
             objs_pos = objs[pos_ids]
             objs_neg = objs[neg_ids]
-            loss_obj += (1 / N) * F.binary_cross_entropy_with_logits(objs_pos, torch.ones_like(objs_pos), reduction='sum') + \
-                (1 / M) * F.binary_cross_entropy_with_logits(objs_neg, torch.zeros_like(objs_neg), reduction='sum')
+            loss_obj += F.binary_cross_entropy_with_logits(objs_pos, torch.ones_like(objs_pos), reduction='sum') + \
+                F.binary_cross_entropy_with_logits(objs_neg, torch.zeros_like(objs_neg), reduction='sum')
 
         # [Step 4]
         #   損失の和を計算する
@@ -216,8 +221,8 @@ class YoloV3(DetectionNet):
         Returns:
             torch.Tensor: [X, 4]
         """
-        db_cx = (bboxes[:, 0] - pboxes[:, 0]) / pboxes[:, 2]
-        db_cy = (bboxes[:, 1] - pboxes[:, 1]) / pboxes[:, 3]
+        db_cx = bboxes[:, 0] - pboxes[:, 0]
+        db_cy = bboxes[:, 1] - pboxes[:, 1]
         db_w = (bboxes[:, 2] / pboxes[:, 2]).log()
         db_h = (bboxes[:, 3] / pboxes[:, 3]).log()
 
@@ -234,8 +239,8 @@ class YoloV3(DetectionNet):
         Returns:
             torch.Tensor: [X, 4]
         """
-        b_cx = pboxes[:, 0] + dbboxes[:, 0] * pboxes[:, 2]
-        b_cy = pboxes[:, 1] + dbboxes[:, 1] * pboxes[:, 3]
+        b_cx = pboxes[:, 0] + dbboxes[:, 0]
+        b_cy = pboxes[:, 1] + dbboxes[:, 1]
         b_w = pboxes[:, 2] * dbboxes[:, 2].exp()
         b_h = pboxes[:, 3] * dbboxes[:, 3].exp()
 
