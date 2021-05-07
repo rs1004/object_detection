@@ -168,10 +168,11 @@ class YoloV3(DetectionNet):
             bboxes_xyxy = box_convert(bboxes, in_fmt='xywh', out_fmt='xyxy')
             pboxes_xyxy = box_convert(pboxes, in_fmt='xywh', out_fmt='xyxy')
             ious = box_iou(pboxes_xyxy, bboxes_xyxy)
+            bbox_ids = ious.max(dim=1).indices
+            bboxes, labels = bboxes[bbox_ids], labels[bbox_ids]
+
             max_ious, pbox_ids = ious.max(dim=0)
             pos_ids = pbox_ids[(max_ious >= iou_thresh).nonzero().reshape(-1)]
-            bbox_ids = torch.arange(ious.size(1))[(max_ious >= iou_thresh).nonzero().reshape(-1)]
-            bboxes, labels = bboxes[bbox_ids], labels[bbox_ids]
             neg_ids = (ious.max(dim=1).values < iou_thresh).nonzero().reshape(-1)
 
             N = len(pos_ids)
