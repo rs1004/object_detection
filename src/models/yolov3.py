@@ -128,8 +128,8 @@ class YoloV3(DetectionNet):
                     pboxes.append([x, y, w, h])
                     grids.append([x, y, x_max, y_max])
 
-        pboxes = torch.tensor(pboxes)
-        grids = torch.tensor(grids)
+        pboxes = torch.tensor(pboxes).half()
+        grids = torch.tensor(grids).half()
         return pboxes, grids
 
     def loss(self, outputs: tuple, gt_bboxes: list, gt_labels: list, iou_thresh: float = 0.5) -> dict:
@@ -214,8 +214,8 @@ class YoloV3(DetectionNet):
             #   Positive / Negative Box に対して、Objectness Loss を計算する
             objs_pos = objs[pos_ids]
             objs_neg = objs[neg_ids]
-            loss_obj += F.binary_cross_entropy_with_logits(objs_pos, torch.ones_like(objs_pos), reduction='sum') + \
-                F.binary_cross_entropy_with_logits(objs_neg, torch.zeros_like(objs_neg), reduction='sum')
+            loss_obj += F.binary_cross_entropy_with_logits(objs_pos, torch.zeros_like(objs_pos), reduction='sum') + \
+                F.binary_cross_entropy_with_logits(objs_neg, torch.ones_like(objs_neg), reduction='sum')
 
         # [Step 4]
         #   損失の和を計算する
