@@ -12,10 +12,10 @@ class YoloV3(DetectionNet):
         super(YoloV3, self).__init__()
         self.nc = num_classes
 
-        self.backborn = backborn.features
+        self.backborn = self._get_backborn_features(backborn)
 
         self.neck = nn.ModuleDict([
-            ('conv6_1', ConvBlock(1024, 512, kernel_size=1, act='leaky')),
+            ('conv6_1', ConvBlock(2048, 512, kernel_size=1, act='leaky')),
             ('conv6_2', ConvBlock(512, 1024, kernel_size=3, padding=1, act='leaky')),
             ('conv6_3', ConvBlock(1024, 512, kernel_size=1, act='leaky')),
             ('conv6_4', ConvBlock(512, 1024, kernel_size=3, padding=1, act='leaky')),
@@ -24,9 +24,9 @@ class YoloV3(DetectionNet):
 
             ('conv7_1', ConvBlock(1024, 256, kernel_size=1, act='leaky')),
             ('upsample7_1', nn.Upsample(scale_factor=2)),
-            ('concat7_1', Concatenate(['darkres5_8', 'upsample7_1'])),
+            ('concat7_1', Concatenate(['layer3', 'upsample7_1'])),
 
-            ('conv8_1', ConvBlock(768, 256, kernel_size=1, act='leaky')),
+            ('conv8_1', ConvBlock(1280, 256, kernel_size=1, act='leaky')),
             ('conv8_2', ConvBlock(256, 512, kernel_size=3, padding=1, act='leaky')),
             ('conv8_3', ConvBlock(512, 256, kernel_size=1, act='leaky')),
             ('conv8_4', ConvBlock(256, 512, kernel_size=3, padding=1, act='leaky')),
@@ -35,9 +35,9 @@ class YoloV3(DetectionNet):
 
             ('conv9_1', ConvBlock(512, 128, kernel_size=1, act='leaky')),
             ('upsample9_1', nn.Upsample(scale_factor=2)),
-            ('concat9_1', Concatenate(['darkres4_8', 'upsample9_1'])),
+            ('concat9_1', Concatenate(['layer2', 'upsample9_1'])),
 
-            ('conv10_1', ConvBlock(384, 128, kernel_size=1, act='leaky')),
+            ('conv10_1', ConvBlock(640, 128, kernel_size=1, act='leaky')),
             ('conv10_2', ConvBlock(128, 256, kernel_size=3, padding=1, act='leaky')),
             ('conv10_3', ConvBlock(256, 128, kernel_size=1, act='leaky')),
             ('conv10_4', ConvBlock(128, 256, kernel_size=3, padding=1, act='leaky')),
@@ -63,9 +63,9 @@ class YoloV3(DetectionNet):
             'conv10_6': nn.Conv2d(256, 3 * self.nc, kernel_size=1),
         })
 
-        self.concat_keys = ['darkres4_8', 'darkres5_8', 'upsample7_1', 'upsample9_1']
+        self.concat_keys = ['layer2', 'layer3', 'upsample7_1', 'upsample9_1']
 
-        self.pboxes, self.grids = self._get_prior_boxes()
+        self.pboxes = self._get_prior_boxes()
 
         self.init_weights(blocks=[self.neck, self.localizers, self.objectnesses, self.classifiers])
 
@@ -99,7 +99,7 @@ class YoloV3(DetectionNet):
             )
             out_objs.append(
                 self.objectnesses[name](res[name]).permute(0, 2, 3, 1).contiguous(
-                ).view(batch_size, -1, 1)
+                ).view(batch_size, -1)
             )
             out_confs.append(
                 self.classifiers[name](res[name]).permute(0, 2, 3, 1).contiguous(
@@ -108,10 +108,17 @@ class YoloV3(DetectionNet):
         out_locs, out_objs, out_confs = torch.cat(out_locs, dim=1), torch.cat(out_objs, dim=1), torch.cat(out_confs, dim=1)
         return out_locs, out_objs, out_confs
 
+    def _get_backborn_features(self, backborn: nn.Module):
+        features = nn.ModuleDict()
+        for name, m in backborn.named_children():
+            if 'avgpool' in name:
+                break
+            features[name] = m
+        return features
+
     def _get_prior_boxes(self) -> torch.Tensor:
         S = 416
         pboxes = []
-        grids = []
         for f_k, aspects in [
             [13, [[116, 90], [156, 198], [373, 326]]],
             [26, [[30, 61],  [62, 45],  [59, 119]]],
@@ -119,18 +126,14 @@ class YoloV3(DetectionNet):
         ]:
             for i, j in product(range(f_k), repeat=2):
                 x = j / f_k
-                x_max = (j + 1) / f_k
                 y = i / f_k
-                y_max = (i + 1) / f_k
                 for w, h in aspects:
                     w /= S
                     h /= S
                     pboxes.append([x, y, w, h])
-                    grids.append([x, y, x_max, y_max])
 
-        pboxes = torch.tensor(pboxes).half()
-        grids = torch.tensor(grids).half()
-        return pboxes, grids
+        pboxes = torch.tensor(pboxes)
+        return pboxes
 
     def loss(self, outputs: tuple, gt_bboxes: list, gt_labels: list, iou_thresh: float = 0.5) -> dict:
         """ 損失関数
@@ -138,7 +141,7 @@ class YoloV3(DetectionNet):
         Args:
             outputs (tuple): (予測オフセット, 予測存在率,  予測信頼度)
                             * 予測オフセット : (B, P, 4) (coord fmt: [Δx, Δy, Δw, Δh]) (P: PBoxの数. P = 10647 の想定.)
-                            * 予測存在率     : (B, P, 1)
+                            * 予測存在率     : (B, P)
                             * 予測信頼度     : (B, P, num_classes)
             gt_bboxes (list): 正解BBOX座標 [(G1, 4), (G2, 4), ...] (coord fmt: [x, y, w, h])
             gt_labels (list): 正解ラベル [(G1,), (G2,)]
@@ -156,7 +159,6 @@ class YoloV3(DetectionNet):
 
         device = out_locs.device
         pboxes = self.pboxes.to(device)
-        grids = self.grids.to(device)
         B = out_locs.size(0)
         loss = loss_loc = loss_conf = loss_obj = 0
         for locs, objs, confs, bboxes, labels in zip(out_locs, out_objs, out_confs, gt_bboxes, gt_labels):
@@ -166,56 +168,31 @@ class YoloV3(DetectionNet):
 
             # [Step 1]
             #   各 Prior Box を BBox に対応させ、Positive, Negative の判定を行う
-            #   - 各 BBox の (x, y) がどの Grid に含まれるかを判定. 含まれる場合は True とする mask を作成.
-            #   - 各 BBox に対し、Grid 内にあり最も IoU が高い Prior Box を取得する
-            #       - その Prior Box との IoU が >= 0.5 の場合、 Positive Box とみなす
-            #       - i.e. 各 BBox に対応する Prior Box はただ一つになる
+            #   - max_iou >= 0.5 の場合、Positive Box とみなし、最大 iou の BBox を対応させる
             #   - max_iou <  0.5 の場合、Negative Box とみなす
-            #   - Positive Box の個数 = 0 ならば Loss = 0 とする（skip する）
+            #   - N := Positive Box の個数。N = 0 ならば Loss = 0 とする（skip する）
             bboxes_xyxy = box_convert(bboxes, in_fmt='xywh', out_fmt='xyxy')
             pboxes_xyxy = box_convert(pboxes, in_fmt='xywh', out_fmt='xyxy')
-            ious = box_iou(pboxes_xyxy, bboxes_xyxy)
-            bbox_ids = ious.max(dim=1).indices
+            max_ious, bbox_ids = box_iou(pboxes_xyxy, bboxes_xyxy).max(dim=1)
             bboxes, labels = bboxes[bbox_ids], labels[bbox_ids]
-
-            mask = torch.logical_and(
-                torch.logical_and(
-                    grids[:, [0]] <= bboxes_xyxy[:, 0],
-                    bboxes_xyxy[:, 0] < grids[:, [2]]),
-                torch.logical_and(
-                    grids[:, [1]] <= bboxes_xyxy[:, 1],
-                    bboxes_xyxy[:, 1] < grids[:, [3]]),
-            )
-            max_ious, pbox_ids = (ious * mask).max(dim=0)
-            pos_ids = pbox_ids[(max_ious >= iou_thresh).nonzero().reshape(-1)]
-            neg_ids = (ious.max(dim=1).values < iou_thresh).nonzero().reshape(-1)
-
+            pos_ids = (max_ious >= iou_thresh).nonzero().reshape(-1)
             if len(pos_ids) == 0:
                 continue
 
             # [Step 2]
             #   Positive Box に対して、 Localization Loss を計算する
-            bboxes_pos = bboxes[pos_ids]
-            pboxes_pos = pboxes[pos_ids]
-            grids_pos = grids[pos_ids]
-            locs_pos = locs[pos_ids]
-            locs_pos = self._calc_coord(locs_pos, pboxes_pos, grids_pos)
-            loss_loc += F.mse_loss(locs_pos, bboxes_pos, reduction='sum')
+            dbboxes_pos = self._calc_delta(bboxes=bboxes[pos_ids], pboxes=pboxes[pos_ids])
+            loss_loc += F.smooth_l1_loss(locs[pos_ids], dbboxes_pos, reduction='sum')
 
             # [Step 3]
             #   Positive Box に対して、Confidence Loss を計算する
             #   labels は 1 開始なので 0 開始に修正する
             labels = labels - 1
-            confs_pos = confs[pos_ids]
-            labels_pos = F.one_hot(labels[pos_ids], num_classes=self.nc).float()
-            loss_conf += F.binary_cross_entropy_with_logits(confs_pos, labels_pos, reduction='sum')
+            loss_conf += F.cross_entropy(confs[pos_ids], labels[pos_ids], reduction='sum')
 
             # [Step 4]
             #   Positive / Negative Box に対して、Objectness Loss を計算する
-            objs_pos = objs[pos_ids]
-            objs_neg = objs[neg_ids]
-            loss_obj += F.binary_cross_entropy_with_logits(objs_pos, torch.zeros_like(objs_pos), reduction='sum') + \
-                F.binary_cross_entropy_with_logits(objs_neg, torch.ones_like(objs_neg), reduction='sum')
+            loss_obj += F.mse_loss(objs.sigmoid(), max_ious)
 
         # [Step 4]
         #   損失の和を計算する
@@ -228,23 +205,40 @@ class YoloV3(DetectionNet):
             'loss_obj': (1 / B) * loss_obj
         }
 
-    def _calc_coord(self, offsets: torch.Tensor, pboxes: torch.Tensor, grids: torch.Tensor) -> torch.Tensor:
-        """ g を算出する
+    def _calc_delta(self, bboxes: torch.Tensor, pboxes: torch.Tensor) -> torch.Tensor:
+        """ Δg を算出する
 
         Args:
-            offsets (torch.Tensor, [X, 4]): Offset Prediction
+            bboxes (torch.Tensor, [X, 4]): GT BBox
             pboxes (torch.Tensor, [X, 4]): Prior Box
-            grids (torch.Tensor, [X, 4]): Grid
 
         Returns:
             torch.Tensor: [X, 4]
         """
-        b_cx = grids[:, 0] + offsets[:, 0].sigmoid()
-        b_cy = grids[:, 1] + offsets[:, 1].sigmoid()
-        b_w = pboxes[:, 2] * offsets[:, 2].exp()
-        b_h = pboxes[:, 3] * offsets[:, 3].exp()
+        db_x = (bboxes[:, 0] - pboxes[:, 0]) / pboxes[:, 2]
+        db_y = (bboxes[:, 1] - pboxes[:, 1]) / pboxes[:, 3]
+        db_w = (bboxes[:, 2] / pboxes[:, 2]).log()
+        db_h = (bboxes[:, 3] / pboxes[:, 3]).log()
 
-        bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1).contiguous()
+        dbboxes = torch.stack([db_x, db_y, db_w, db_h], dim=1).contiguous()
+        return dbboxes
+
+    def _calc_coord(self, locs: torch.Tensor, pboxes: torch.Tensor) -> torch.Tensor:
+        """ g を算出する
+
+        Args:
+            locs (torch.Tensor, [X, 4]): Offset Prediction
+            pboxes (torch.Tensor, [X, 4]): Prior Box
+
+        Returns:
+            torch.Tensor: [X, 4]
+        """
+        b_x = pboxes[:, 0] + locs[:, 0] * pboxes[:, 2]
+        b_y = pboxes[:, 1] + locs[:, 1] * pboxes[:, 3]
+        b_w = pboxes[:, 2] * locs[:, 2].exp()
+        b_h = pboxes[:, 3] * locs[:, 3].exp()
+
+        bboxes = torch.stack([b_x, b_y, b_w, b_h], dim=1).contiguous()
         return bboxes
 
     def pre_predict(self, outputs: tuple):
@@ -261,8 +255,8 @@ class YoloV3(DetectionNet):
         """
         out_locs, out_objs, out_confs = outputs
         out_objs = out_objs.sigmoid()
-        out_confs = out_confs.sigmoid()
-        out_confs = out_confs * out_objs
+        out_confs = F.softmax(out_confs, dim=-1)
+        out_confs = out_confs * out_objs[..., None]
 
         # to CPU
         out_locs = out_locs.detach().cpu()
@@ -275,8 +269,8 @@ class YoloV3(DetectionNet):
 
         for locs, objs, confs in zip(out_locs, out_objs, out_confs):
             confs, class_ids = confs.max(dim=-1)
-            class_ids.add_(1)
-            pos_ids = objs.gt(0.5).reshape(-1).nonzero().reshape(-1)
+            class_ids = class_ids + 1
+            pos_ids = (objs >= 0.5).nonzero().reshape(-1)
             confs, class_ids = confs[pos_ids], class_ids[pos_ids]
             bboxes = self._calc_coord(locs[pos_ids], self.pboxes[pos_ids])
             bboxes = box_convert(bboxes, in_fmt='xywh', out_fmt='xyxy')
@@ -290,14 +284,12 @@ class YoloV3(DetectionNet):
 
 if __name__ == '__main__':
     from torchsummary import summary
-    from models.darknet import Darknet53
+    from torchvision.models import resnext50_32x4d
 
-    backborn = Darknet53()
+    backborn = resnext50_32x4d()
 
     model = YoloV3(10, backborn)
     summary(model, (3, 416, 416))
     x = torch.rand(2, 3, 416, 416)
     out_locs, out_objs, out_confs = model(x)
     print(out_locs.shape)
-    for name, m in model.named_parameters():
-        print(name, len(m.shape))

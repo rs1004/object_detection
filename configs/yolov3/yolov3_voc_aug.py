@@ -41,7 +41,7 @@ data = dict(
 )
 
 # モデル
-model = dict(type='yolov3', num_classes=20, backborn='Darknet53', backborn_weight=None)
+model = dict(type='yolov3', num_classes=20, backborn='resnet50', backborn_weight=None)
 
 # 学習
 train_conditions = [

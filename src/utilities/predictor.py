@@ -79,8 +79,8 @@ class Predictor:
                 result.append(res)
 
             if self.out_dir:
-                mean = torch.tensor(image_meta['norm_mean']).reshape(3, 1, 1).half()
-                std = torch.tensor(image_meta['norm_std']).reshape(3, 1, 1).half()
+                mean = torch.tensor(image_meta['norm_mean']).reshape(3, 1, 1)
+                std = torch.tensor(image_meta['norm_std']).reshape(3, 1, 1)
                 image = image * std + mean
                 image = self._to_pil_image(image, size=(W, H))
                 image = self._draw_bbox(image, result)
