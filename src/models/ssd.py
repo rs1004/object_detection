@@ -187,7 +187,6 @@ class SSD(DetectionNet):
             bboxes_xyxy = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
             dboxes_xyxy = box_convert(dboxes, in_fmt='cxcywh', out_fmt='xyxy')
             max_ious, bbox_ids = box_iou(dboxes_xyxy, bboxes_xyxy).max(dim=1)
-            bboxes, labels = bboxes[bbox_ids], labels[bbox_ids]
             pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().reshape(-1), (max_ious < iou_thresh).nonzero().reshape(-1)
             N = len(pos_ids)
             if N == 0:
@@ -195,18 +194,20 @@ class SSD(DetectionNet):
 
             # [Step 2]
             #   Positive Box に対して、 Localization Loss を計算する
-            bboxes_pos = bboxes[pos_ids]
-            dboxes_pos = dboxes[pos_ids]
-            dbboxes_pos = self._calc_delta(bboxes=bboxes_pos, dboxes=dboxes_pos)
-            loss_loc += (1 / N) * F.smooth_l1_loss(locs[pos_ids], dbboxes_pos, reduction='sum')
+            loss_loc += (1 / N) * F.smooth_l1_loss(
+                locs[pos_ids],
+                self._calc_delta(bboxes=bboxes[bbox_ids[pos_ids]], dboxes=dboxes[pos_ids]),
+                reduction='sum'
+            )
 
             # [Step 3]
             #   Positive / Negative Box に対して、Confidence Loss を計算する
             #   - Negative Box の labels は 0 とする
             #   - Negative Box は Loss の上位 len(pos_ids) * 3 個のみを計算に使用する (Hard Negative Mining)
-            labels[neg_ids] = 0
-            sce = F.cross_entropy(confs, labels, reduction='none')
-            loss_conf += (1 / N) * (sce[pos_ids].sum() + sce[neg_ids].topk(k=int(N * 3)).values.sum())
+            loss_conf += (1 / N) * (
+                F.cross_entropy(confs[pos_ids], labels[bbox_ids[pos_ids]], reduction='sum') +
+                F.cross_entropy(confs[neg_ids], torch.zeros_like(labels[bbox_ids[neg_ids]]), reduction='sum')
+            )
 
         # [Step 4]
         #   損失の和を計算する

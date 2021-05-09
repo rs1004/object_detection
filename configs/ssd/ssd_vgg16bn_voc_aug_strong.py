@@ -27,8 +27,8 @@ data = dict(
         ],
         torch=[
             dict(type='ToTensor'),
-            dict(type='Dropout', p=(0.0, 0.1)),
-            dict(type='Normalize', mean=__mean, std=__std)
+            dict(type='Normalize', mean=__mean, std=__std),
+            dict(type='Dropout', p=(0.0, 0.1))
         ]
     ),
     val_pipeline=dict(
