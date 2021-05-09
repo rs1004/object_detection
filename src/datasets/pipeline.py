@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import albumentations as A
 import torchvision.transforms as T
+from random import random, randint
 
 
 class Compose:
@@ -24,14 +25,14 @@ class GridErasing(nn.Module):
         self.min_stride_ratio = min_stride_ratio
         self.max_stride_ratio = max_stride_ratio
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         # get params
-        stride = int(x.size(-1) * ((self.max_stride_ratio - self.min_stride_ratio) * torch.rand(1) + self.min_stride_ratio))
-        grid_size = int(torch.randint(int(stride * 0.3), int(stride * 0.7), (1, )))
+        stride = int(x.size(-1) * ((self.max_stride_ratio - self.min_stride_ratio) * random() + self.min_stride_ratio))
+        grid_size = randint(int(stride * 0.3), int(stride * 0.7))
 
         grid_hws = torch.cartesian_prod(
-            torch.arange(int(torch.randint(0, stride, (1,))), x.size(1), stride),
-            torch.arange(int(torch.randint(0, stride, (1,))), x.size(2), stride)
+            torch.arange(randint(0, stride), x.size(1), stride),
+            torch.arange(randint(0, stride), x.size(2), stride)
         )
 
         for h, w in grid_hws:
@@ -39,6 +40,18 @@ class GridErasing(nn.Module):
                 erase = torch.empty_like(x[..., h:h+grid_size, w:w+grid_size], dtype=torch.float32).normal_()
                 x[..., h:h+grid_size, w:w+grid_size] = erase
         return x
+
+
+class Dropout(nn.Module):
+    def __init__(self, p=(0, 0.05)):
+        super(Dropout, self).__init__()
+        if isinstance(p, tuple):
+            self.p = (p[1] - p[0]) * random() + p[0]
+        else:
+            self.p = p
+
+    def forward(self, x: torch.Tensor):
+        return x * (torch.rand_like(x) > self.p)
 
 
 class Pipeline:
