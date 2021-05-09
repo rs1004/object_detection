@@ -258,11 +258,12 @@ class SSD(DetectionNet):
         bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1).contiguous()
         return bboxes
 
-    def pre_predict(self, outputs: tuple) -> tuple:
+    def pre_predict(self, outputs: tuple, conf_thresh: float = 0.4) -> tuple:
         """ モデルの出力結果を予測データに変換する
 
         Args:
             outputs (tuple): モデルの出力. (予測オフセット, 予測信頼度)
+            conf_thresh (float): 信頼度の閾値. Defaults to 0.4.
 
         Returns:
             tuple: (予測BBox, 予測信頼度, 予測クラス)
@@ -283,7 +284,7 @@ class SSD(DetectionNet):
 
         for locs, confs in zip(out_locs, out_confs):
             confs, class_ids = confs.max(dim=-1)
-            pos_ids = class_ids.nonzero().reshape(-1)  # 0 is background class
+            pos_ids = ((class_ids != 0) * (confs >= conf_thresh)).nonzero().reshape(-1)  # 0 is background class
             confs, class_ids = confs[pos_ids], class_ids[pos_ids]
             bboxes = self._calc_coord(locs[pos_ids], self.dboxes[pos_ids])
             bboxes = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')

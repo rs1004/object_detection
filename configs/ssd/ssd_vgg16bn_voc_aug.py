@@ -61,7 +61,6 @@ runtime = dict(
 
 # 予測・評価
 predictor = dict(
-    conf_thresh=0.4,
     iou_thresh=0.45
 )
 evaluator = dict(

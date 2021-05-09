@@ -9,7 +9,6 @@ class Predictor:
     """ 予測を行うクラス
 
     Args:
-        conf_thresh (float, optional): 信頼度の閾値. Defaults to 0.4.
         iou_thresh (float, optional): NMS における iou の閾値. Defaults to 0.45.
         classes (dict, optional): クラス ID と名前の辞書. Defaults to None.
         out_dir (str, optional): BBox 描画済み画像の出力先. Defaults to None.
@@ -28,8 +27,7 @@ class Predictor:
             }, {...}, ...]
     """
 
-    def __init__(self, conf_thresh: float = 0.4, iou_thresh: float = 0.45, classes: dict = None, out_dir: str = None):
-        self.conf_thresh = conf_thresh
+    def __init__(self, iou_thresh: float = 0.45, classes: dict = None, out_dir: str = None):
         self.iou_thresh = iou_thresh
         self.classes = classes
         self.out_dir = out_dir
@@ -53,12 +51,6 @@ class Predictor:
         """
         result = []
         for image, image_meta, bboxes, confs, class_ids in zip(images, image_metas, pred_bboxes, pred_confs, pred_class_ids):
-
-            # 低信頼度のものを除去
-            valid_ids = confs.gt(self.conf_thresh).nonzero().reshape(-1)
-            bboxes = bboxes[valid_ids]
-            confs = confs[valid_ids]
-            class_ids = class_ids[valid_ids]
 
             # 重複の除去（non-maximum supression）
             keep = batched_nms(bboxes, confs, class_ids, iou_threshold=self.iou_thresh)

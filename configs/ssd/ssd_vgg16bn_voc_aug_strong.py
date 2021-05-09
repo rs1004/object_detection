@@ -19,16 +19,16 @@ data = dict(
     bbox_fmt='cxcywh',
     train_pipeline=dict(
         albu=[
-            dict(type='CropAndPad', percent=0.05),
-            dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.4),
-            dict(type='RGBShift'),
-            dict(type='HorizontalFlip'),
             dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
+            dict(type='ChannelShuffle'),
+            dict(type='CropAndPad', percent=0.3, pad_cval=[int(v * 255) for v in __mean]),
+            dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.35),
+            dict(type='HorizontalFlip'),
         ],
         torch=[
             dict(type='ToTensor'),
-            dict(type='GridErasing', min_stride_ratio=0.1, max_stride_ratio=0.2),
-            dict(type='Normalize', mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            dict(type='Dropout', p=(0.0, 0.1)),
+            dict(type='Normalize', mean=__mean, std=__std)
         ]
     ),
     val_pipeline=dict(
@@ -51,10 +51,10 @@ train_conditions = [
     dict(keys=['.'])
 ]
 optimizer = dict(type='SGD', lr=0.0026, momentum=0.9, weight_decay=0.0005)
-scheduler = dict(type='CosineAnnealingWarmUpRestarts', gamma=0.80, eta_min=0.0001, T_up=10, T_0=50)
+scheduler = dict(type='ExponentialLRWarmUpRestarts', gamma=0.97, eta_min=0.0001, T_up=10)
 runtime = dict(
     batch_size=32,
-    epochs=150,
+    epochs=200,
     out_dir=__out_dir,
     resume=False,
     eval_interval=10
@@ -62,7 +62,6 @@ runtime = dict(
 
 # 予測・評価
 predictor = dict(
-    conf_thresh=0.4,
     iou_thresh=0.45
 )
 evaluator = dict(
