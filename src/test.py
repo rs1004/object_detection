@@ -9,6 +9,8 @@ from torch.utils.data import DataLoader
 from models import Model
 from utilities import Config, Predictor, Evaluator
 
+from tensorboard.backend.event_processing import event_accumulator
+
 
 # ----------------- パラメータ設定 -----------------
 parser = argparse.ArgumentParser()
@@ -19,9 +21,16 @@ args = parser.parse_args()
 cfg = Config(args.config_path)
 
 test_dir = cfg.runtime['out_dir'] + '/test'
+log_dir = cfg.runtime['out_dir'] + '/logs'
 weights_path = cfg.runtime['out_dir'] + '/weights/latest.pth'
 rmtree(test_dir, ignore_errors=True)
 Path(test_dir).mkdir(parents=True, exist_ok=True)
+epoch = '-'
+for log_path in Path(log_dir).glob('**/events.out.*'):
+    ea = event_accumulator.EventAccumulator(log_path.as_posix())
+    ea.Reload()
+    if 'loss/train' in ea.Tags()['scalars']:
+        epoch = max(event.step for event in ea.Scalars('loss/train')) + 1
 
 # データ生成
 dataset = DetectionDataset(
@@ -97,6 +106,6 @@ for images, image_metas, gt_bboxes, gt_labels in tqdm(dataloader, total=len(data
 
 if len(result) > 0:
     evaluator.dump_pred(result)
-    evaluator.run()
+    evaluator.run(epoch)
 else:
     print('No Object Detected. Skip Evaluation')

@@ -173,7 +173,7 @@ with SummaryWriter(log_dir=log_dir) as writer:
         if epoch % cfg.runtime['eval_interval'] == 0:
             if len(result) > 0:
                 evaluator.dump_pred(result)
-                evaluator.run()
+                evaluator.run(epoch)
             else:
                 print('No Object Detected. Skip Evaluation')
 
