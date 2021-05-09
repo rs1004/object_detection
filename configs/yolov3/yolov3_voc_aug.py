@@ -20,13 +20,15 @@ data = dict(
     bbox_fmt='xywh',
     train_pipeline=dict(
         albu=[
-            dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.3),
-            dict(type='HorizontalFlip'),
             dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
+            dict(type='ChannelShuffle'),
+            dict(type='CropAndPad', percent=0.3, pad_cval=[int(v * 255) for v in __mean]),
+            dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.35),
+            dict(type='HorizontalFlip'),
         ],
         torch=[
             dict(type='ToTensor'),
-            dict(type='Normalize', mean=__mean, std=__std)
+            dict(type='Dropout', p=(0.0, 0.1))
         ]
     ),
     val_pipeline=dict(
@@ -34,14 +36,13 @@ data = dict(
             dict(type='Resize', height=__input_size, width=__input_size)
         ],
         torch=[
-            dict(type='ToTensor'),
-            dict(type='Normalize', mean=__mean, std=__std)
+            dict(type='ToTensor')
         ]
     )
 )
 
 # モデル
-model = dict(type='yolov3', num_classes=20, backborn='resnet50', backborn_weight=None)
+model = dict(type='yolov3', num_classes=20, backborn='Darknet53', backborn_weight=None)
 
 # 学習
 train_conditions = [
@@ -51,7 +52,7 @@ train_conditions = [
 optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
 scheduler = dict(type='ExponentialLRWarmUpRestarts', gamma=0.98, eta_min=0.0001, T_up=10)
 runtime = dict(
-    batch_size=24,
+    batch_size=2,
     epochs=100,
     out_dir=__out_dir,
     resume=False,
