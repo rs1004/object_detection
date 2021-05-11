@@ -22,7 +22,7 @@ data = dict(
         albu=[
             dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
             dict(type='ChannelShuffle'),
-            dict(type='CropAndPad', percent=0.3, pad_cval=[int(v * 255) for v in __mean]),
+            dict(type='ShiftScaleRotate', shift_limit=0, rotate_limit=0, scale_limit=(-0.75, 0.0), border_mode=0, value=tuple(int(v * 255) for v in __mean)),
             dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.35),
             dict(type='HorizontalFlip'),
         ],
@@ -52,8 +52,8 @@ train_conditions = [
 optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
 scheduler = dict(type='ExponentialLRWarmUpRestarts', gamma=0.98, eta_min=0.0001, T_up=10)
 runtime = dict(
-    batch_size=2,
-    epochs=100,
+    batch_size=32,
+    epochs=140,
     out_dir=__out_dir,
     resume=False,
     eval_interval=10
@@ -61,7 +61,6 @@ runtime = dict(
 
 # 予測・評価
 predictor = dict(
-    conf_thresh=0.4,
     iou_thresh=0.45
 )
 evaluator = dict(

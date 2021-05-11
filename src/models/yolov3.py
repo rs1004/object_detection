@@ -61,7 +61,7 @@ class YoloV3(DetectionNet):
         batch_size = x.size(0)
 
         srcs = dict.fromkeys(self.concat_keys)
-        res = dict.fromkeys(self.localizers.keys())
+        res = dict.fromkeys(self.yolo_head.keys())
         for name, m in self.backborn.items():
             x = m(x)
             if name in srcs:
@@ -176,9 +176,14 @@ class YoloV3(DetectionNet):
 
             # [Step 2]
             #   Positive Box に対して、 Localization Loss を計算する
-            loss_loc += F.mse_loss(
-                self._calc_coord(locs[pos_ids], pboxes[pos_ids]),
-                bboxes[bbox_ids[pos_ids]],
+            dbboxes_pos = self._calc_delta(bboxes[bbox_ids[pos_ids]], pboxes[pos_ids])
+            loss_loc += F.binary_cross_entropy_with_logits(
+                locs[pos_ids, 0:2],
+                dbboxes_pos[:, 0:2],
+                reduction='sum'
+            ) + F.mse_loss(
+                locs[pos_ids, 2:4],
+                dbboxes_pos[:, 2:4],
                 reduction='sum'
             )
 
@@ -210,6 +215,24 @@ class YoloV3(DetectionNet):
             'loss_obj': (1 / B) * loss_obj
         }
 
+    def _calc_delta(self, bboxes: torch.Tensor, pboxes: torch.Tensor) -> torch.Tensor:
+        """ Δg を算出する
+
+        Args:
+            bboxes (torch.Tensor, [X, 4]): GT BBox
+            pboxes (torch.Tensor, [X, 4]): Prior Box
+
+        Returns:
+            torch.Tensor: [X, 4]
+        """
+        db_x = (bboxes[:, 0] - pboxes[:, 0]) / pboxes[:, 4]
+        db_y = (bboxes[:, 1] - pboxes[:, 1]) / pboxes[:, 5]
+        db_w = (bboxes[:, 2] / pboxes[:, 2]).log()
+        db_h = (bboxes[:, 3] / pboxes[:, 3]).log()
+
+        dbboxes = torch.stack([db_x, db_y, db_w, db_h], dim=1).contiguous()
+        return dbboxes
+
     def _calc_coord(self, locs: torch.Tensor, pboxes: torch.Tensor) -> torch.Tensor:
         """ g を算出する
 
@@ -220,8 +243,8 @@ class YoloV3(DetectionNet):
         Returns:
             torch.Tensor: [X, 4]
         """
-        b_x = pboxes[:, 0] + locs[:, 0].sigmoid()
-        b_y = pboxes[:, 1] + locs[:, 1].sigmoid()
+        b_x = pboxes[:, 0] + locs[:, 0].sigmoid() * pboxes[:, 4]
+        b_y = pboxes[:, 1] + locs[:, 1].sigmoid() * pboxes[:, 5]
         b_w = pboxes[:, 2] * locs[:, 2].exp()
         b_h = pboxes[:, 3] * locs[:, 3].exp()
 
