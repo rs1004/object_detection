@@ -109,7 +109,8 @@ if __name__ == '__main__':
         albu=[
             dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
             dict(type='ChannelShuffle'),
-            dict(type='CropAndPad', percent=0.3, pad_cval=[int(v * 255) for v in [0.485, 0.456, 0.406]]),
+            dict(type='ShiftScaleRotate', shift_limit=0, rotate_limit=0, scale_limit=(-0.75, 0.0),
+                 border_mode=0, value=(int(0.485*255), int(0.456*255), int(0.406*255))),
             dict(type='RandomSizedBBoxSafeCrop', height=size, width=size, erosion_rate=0.35),
             dict(type='HorizontalFlip'),
         ],
@@ -122,7 +123,7 @@ if __name__ == '__main__':
     ds = DetectionDataset('/home/sato/work/object_detection/data/voc', pipeline)
 
     images = []
-    for _ in range(20):
+    for _ in range(40):
         image, image_meta, bboxes, labels = ds.__getitem__(0)
         image = Image.fromarray((image.permute(1, 2, 0) * 255).numpy().astype('uint8'))
         draw = ImageDraw.Draw(image)
