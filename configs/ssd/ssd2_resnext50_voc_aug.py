@@ -47,7 +47,7 @@ model = dict(type='ssd2', num_classes=20, backborn='resnext50_32x8d', backborn_w
 
 # 学習
 train_conditions = [
-    dict(keys=['bn', 'bias', '4_3.0'], weight_decay=0.0),
+    dict(keys=['bn', 'bias'], weight_decay=0.0),
     dict(keys=['.'])
 ]
 optimizer = dict(type='SGD', lr=0.0026, momentum=0.9, weight_decay=0.0005)

@@ -28,7 +28,7 @@ data = dict(
         ],
         torch=[
             dict(type='ToTensor'),
-            dict(type='Dropout', p=(0.0, 0.1))
+            dict(type='Dropout', p=(0.0, 0.05))
         ]
     ),
     val_pipeline=dict(
@@ -49,11 +49,11 @@ train_conditions = [
     dict(keys=['bn', 'bias'], weight_decay=0.0),
     dict(keys=['.'])
 ]
-optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
+optimizer = dict(type='SGD', lr=0.0026, momentum=0.9, weight_decay=0.0005)
 scheduler = dict(type='ExponentialLRWarmUpRestarts', gamma=0.98, eta_min=0.0001, T_up=10)
 runtime = dict(
     batch_size=32,
-    epochs=140,
+    epochs=100,
     out_dir=__out_dir,
     resume=False,
     eval_interval=10
