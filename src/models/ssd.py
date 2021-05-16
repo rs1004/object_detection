@@ -206,7 +206,7 @@ class SSD(DetectionNet):
             #   - Negative Box は Loss の上位 len(pos_ids) * 3 個のみを計算に使用する (Hard Negative Mining)
             loss_conf += (1 / N) * (
                 F.cross_entropy(confs[pos_ids], labels[bbox_ids[pos_ids]], reduction='sum') +
-                F.cross_entropy(confs[neg_ids], torch.zeros_like(labels[bbox_ids[neg_ids]]), reduction='sum')
+                F.cross_entropy(confs[neg_ids], torch.zeros_like(labels[bbox_ids[neg_ids]]), reduction='none').topk(k=int(N * 3)).values.sum()
             )
 
         # [Step 4]
@@ -240,21 +240,21 @@ class SSD(DetectionNet):
         dbboxes = torch.stack([db_cx, db_cy, db_w, db_h], dim=1).contiguous()
         return dbboxes
 
-    def _calc_coord(self, dbboxes: torch.Tensor, dboxes: torch.Tensor, std: list = [0.1, 0.2]) -> torch.Tensor:
+    def _calc_coord(self, locs: torch.Tensor, dboxes: torch.Tensor, std: list = [0.1, 0.2]) -> torch.Tensor:
         """ g を算出する
 
         Args:
-            dbboxes (torch.Tensor, [X, 4]): Offset Prediction
+            locs (torch.Tensor, [X, 4]): Offset Prediction
             dboxes (torch.Tensor, [X, 4]): Default Box
             std (list, optional): Δg を全データに対して計算して得られる標準偏差. Defaults to [0.1, 0.2].
 
         Returns:
             torch.Tensor: [X, 4]
         """
-        b_cx = dboxes[:, 0] + std[0] * dbboxes[:, 0] * dboxes[:, 2]
-        b_cy = dboxes[:, 1] + std[0] * dbboxes[:, 1] * dboxes[:, 3]
-        b_w = dboxes[:, 2] * (std[1] * dbboxes[:, 2]).exp()
-        b_h = dboxes[:, 3] * (std[1] * dbboxes[:, 3]).exp()
+        b_cx = dboxes[:, 0] + std[0] * locs[:, 0] * dboxes[:, 2]
+        b_cy = dboxes[:, 1] + std[0] * locs[:, 1] * dboxes[:, 3]
+        b_w = dboxes[:, 2] * (std[1] * locs[:, 2]).exp()
+        b_h = dboxes[:, 3] * (std[1] * locs[:, 3]).exp()
 
         bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1).contiguous()
         return bboxes
