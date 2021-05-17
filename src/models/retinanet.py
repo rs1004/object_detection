@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from itertools import product
 from torchvision.ops import box_iou, box_convert
 from models.base import DetectionNet
-from models.losses import focal_loss
+from models.losses import sigmoid_focal_loss
 
 
 class UpAdd(nn.Module):
@@ -116,7 +116,7 @@ class RetinaNet(DetectionNet):
         """
         pboxes = []
 
-        for f_k in [52, 26, 13, 7, 4]:
+        for f_k in [40, 20, 10, 5, 3]:
             for i, j in product(range(f_k), repeat=2):
                 cx = (j + 0.5) / f_k
                 cy = (i + 0.5) / f_k
@@ -154,8 +154,8 @@ class RetinaNet(DetectionNet):
         pboxes = self.pboxes.to(device)
         B = out_locs.size(0)
         pos_thresh, neg_thresh = iou_thresholds
-        loss_loc = torch.tensor(0.)
-        loss_conf = torch.tensor(0.)
+        loss_loc = torch.tensor(0.).to(device)
+        loss_conf = torch.tensor(0.).to(device)
         for locs, confs, bboxes, labels in zip(out_locs, out_confs, gt_bboxes, gt_labels):
             # to GPU
             bboxes = bboxes.to(device)
@@ -187,8 +187,8 @@ class RetinaNet(DetectionNet):
             #   - Negative Box の labels は 0 とする
             #   - Negative Box は Loss の上位 len(pos_ids) * 3 個のみを計算に使用する (Hard Negative Mining)
             loss_conf += (1 / N) * (
-                focal_loss(confs[pos_ids], labels[bbox_ids[pos_ids]], reduction='sum') +
-                focal_loss(confs[neg_ids], torch.zeros_like(labels[bbox_ids[neg_ids]]), reduction='sum')
+                sigmoid_focal_loss(confs[pos_ids], labels[bbox_ids[pos_ids]], reduction='sum') +
+                sigmoid_focal_loss(confs[neg_ids], torch.zeros_like(labels[bbox_ids[neg_ids]]), reduction='sum')
             )
 
         # [Step 4]
@@ -280,9 +280,11 @@ class RetinaNet(DetectionNet):
 
 
 if __name__ == '__main__':
+    import math
     import torch
     from torchvision.models import resnet50
-    x = torch.rand(2, 3, 416, 416)
+    size = 320
+    x = torch.rand(2, 3, size, size)
 
     backborn = resnet50()
     model = RetinaNet(num_classes=20, backborn=backborn)
@@ -290,8 +292,9 @@ if __name__ == '__main__':
     print(outputs[0].shape, outputs[1].shape)
     print(len(model.pboxes))
 
-    out_locs = torch.rand(4, 32526, 4)
-    out_confs = torch.rand(4, 32526, 21)
+    num_pboxes = sum([pow(math.ceil(size * pow(2, -i)), 2) * 9 for i in range(3, 8)])
+    out_locs = torch.rand(4, num_pboxes, 4)
+    out_confs = torch.rand(4, num_pboxes, 21)
     outputs = (out_locs, out_confs)
     gt_bboxes = [torch.rand(5, 4) for _ in range(4)]
     gt_labels = [torch.randint(0, 20, (5,)) for _ in range(4)]

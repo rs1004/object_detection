@@ -1,7 +1,7 @@
 from pathlib import Path
 
 __data = 'voc'
-__input_size = 416
+__input_size = 320
 __version = 'retinanet_r50_voc_aug'
 
 if Path('/content/object_detection').exists():
@@ -21,8 +21,9 @@ data = dict(
         albu=[
             dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
             dict(type='ChannelShuffle'),
-            dict(type='ShiftScaleRotate', shift_limit=0, rotate_limit=0, scale_limit=(-0.75, 0.0), border_mode=0, value=tuple(int(v * 255) for v in __mean)),
-            dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.35),
+            # dict(type='ShiftScaleRotate', shift_limit=0, rotate_limit=0, scale_limit=(-0.75, 0.0), border_mode=0, value=tuple(int(v * 255) for v in __mean)),
+            # dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.35),
+            dict(type='Resize', height=__input_size, width=__input_size),
             dict(type='HorizontalFlip'),
         ],
         torch=[
@@ -53,7 +54,7 @@ train_conditions = [
 optimizer = dict(type='SGD', lr=0.0026, momentum=0.9, weight_decay=0.0005)
 scheduler = dict(type='ExponentialLRWarmUpRestarts', gamma=0.97, eta_min=0.0001, T_up=10)
 runtime = dict(
-    batch_size=24,
+    batch_size=16,
     epochs=100,
     out_dir=__out_dir,
     resume=False,
