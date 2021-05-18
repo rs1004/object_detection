@@ -53,7 +53,7 @@ train_conditions = [
 optimizer = dict(type='SGD', lr=0.0026, momentum=0.9, weight_decay=0.0005)
 scheduler = dict(type='ExponentialLRWarmUpRestarts', gamma=0.97, eta_min=0.0001, T_up=10)
 runtime = dict(
-    batch_size=16,
+    batch_size=4,
     epochs=100,
     out_dir=__out_dir,
     resume=False,

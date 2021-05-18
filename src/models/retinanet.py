@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from itertools import product
 from torchvision.ops import box_iou, box_convert
 from models.base import DetectionNet
-from models.losses import sigmoid_focal_loss
+from models.losses import focal_loss
 
 
 class UpAdd(nn.Module):
@@ -187,8 +187,8 @@ class RetinaNet(DetectionNet):
             #   - Negative Box の labels は 0 とする
             #   - Negative Box は Loss の上位 len(pos_ids) * 3 個のみを計算に使用する (Hard Negative Mining)
             loss_conf += (1 / N) * (
-                sigmoid_focal_loss(confs[pos_ids], labels[bbox_ids[pos_ids]], reduction='sum') +
-                sigmoid_focal_loss(confs[neg_ids], torch.zeros_like(labels[bbox_ids[neg_ids]]), reduction='sum')
+                focal_loss(confs[pos_ids], labels[bbox_ids[pos_ids]], reduction='sum') +
+                focal_loss(confs[neg_ids], torch.zeros_like(labels[bbox_ids[neg_ids]]), reduction='sum')
             )
 
         # [Step 4]
