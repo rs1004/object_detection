@@ -148,6 +148,7 @@ with SummaryWriter(log_dir=log_dir) as writer:
 
             if phase == 'train' and loss['loss'] > 0:
                 loss['loss'].backward()
+                torch.nn.utils.clip_grad_value_(model.parameters(), clip_value=2.0)
                 optimizer.step()
             elif epoch % cfg.runtime['eval_interval'] == 0:
                 images = images.detach().cpu()

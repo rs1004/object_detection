@@ -51,7 +51,8 @@ class Dropout(nn.Module):
             self.p = p
 
     def forward(self, x: torch.Tensor):
-        return x * (torch.rand_like(x) > self.p)
+        _, h, w = x.size()
+        return x * (torch.rand(1, h, w) > self.p)
 
 
 class Pipeline:
@@ -89,7 +90,7 @@ class Pipeline:
             transforms.append(eval('A.' + cfg.pop('type'))(**cfg))
         return A.Compose(
             transforms,
-            bbox_params=A.BboxParams(format='coco', label_fields=['labels'])
+            bbox_params=A.BboxParams(format='coco', min_visibility=0.1, label_fields=['labels'])
         )
 
     def _build_torch(self, pipe_cfg):
