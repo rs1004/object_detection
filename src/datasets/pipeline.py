@@ -90,7 +90,7 @@ class Pipeline:
             transforms.append(eval('A.' + cfg.pop('type'))(**cfg))
         return A.Compose(
             transforms,
-            bbox_params=A.BboxParams(format='coco', min_visibility=0.1, label_fields=['labels'])
+            bbox_params=A.BboxParams(format='coco', label_fields=['labels'])
         )
 
     def _build_torch(self, pipe_cfg):

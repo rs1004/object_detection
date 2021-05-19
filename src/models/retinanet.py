@@ -11,11 +11,11 @@ class UpAdd(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(UpAdd, self).__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, 1)
-        self.up = nn.Upsample(scale_factor=2)
 
     def forward(self, cx, fx):
+        _, _, h, w = cx.size()
         cx = self.conv(cx)
-        fx = self.up(fx)
+        fx = F.upsample_bilinear(fx, size=(h, w))
         return cx + fx
 
 
@@ -71,6 +71,11 @@ class RetinaNet(DetectionNet):
             nn.ReLU(inplace=True),
             nn.Conv2d(fpn_out_channels, fpn_out_channels, kernel_size=3, stride=2, padding=1)
         )
+        self.p3_avgpool = nn.AdaptiveAvgPool2d(output_size=32)
+        self.p4_avgpool = nn.AdaptiveAvgPool2d(output_size=16)
+        self.p5_avgpool = nn.AdaptiveAvgPool2d(output_size=8)
+        self.p6_avgpool = nn.AdaptiveAvgPool2d(output_size=4)
+        self.p7_avgpool = nn.AdaptiveAvgPool2d(output_size=2)
 
         self.regressor = Head(fpn_out_channels, 4 * 9)
 
@@ -89,12 +94,12 @@ class RetinaNet(DetectionNet):
         c4 = self.c4(c3)
         c5 = self.c5(c4)
 
-        p5 = self.p5(c5)
-        p6 = self.p6(c5)
-        p7 = self.p7(p6)
+        p5 = self.p5_avgpool(self.p5(c5))
+        p6 = self.p6_avgpool(self.p6(c5))
+        p7 = self.p7_avgpool(self.p7(p6))
 
-        p4 = self.p4(c4, p5)
-        p3 = self.p3(c3, p4)
+        p4 = self.p4_avgpool(self.p4(c4, p5))
+        p3 = self.p3_avgpool(self.p3(c3, p4))
 
         out_locs = []
         out_confs = []
@@ -116,7 +121,7 @@ class RetinaNet(DetectionNet):
         """
         pboxes = []
 
-        for f_k in [40, 20, 10, 5, 3]:
+        for f_k in [32, 16, 8, 4, 2]:
             for i, j in product(range(f_k), repeat=2):
                 cx = (j + 0.5) / f_k
                 cy = (i + 0.5) / f_k
@@ -280,10 +285,9 @@ class RetinaNet(DetectionNet):
 
 
 if __name__ == '__main__':
-    import math
     import torch
     from torchvision.models import resnet50
-    size = 320
+    size = 416
     x = torch.rand(2, 3, size, size)
 
     backborn = resnet50()
@@ -292,7 +296,7 @@ if __name__ == '__main__':
     print(outputs[0].shape, outputs[1].shape)
     print(len(model.pboxes))
 
-    num_pboxes = sum([pow(math.ceil(size * pow(2, -i)), 2) * 9 for i in range(3, 8)])
+    num_pboxes = sum([(2 ** i) ** 2 * 9 for i in range(1, 6)])
     out_locs = torch.rand(4, num_pboxes, 4)
     out_confs = torch.rand(4, num_pboxes, 21)
     outputs = (out_locs, out_confs)
