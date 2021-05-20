@@ -109,8 +109,8 @@ if __name__ == '__main__':
         albu=[
             dict(type='Resize', height=300, width=300),
             dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
-            dict(type='ShiftScaleRotate', shift_limit=0.2, rotate_limit=0, scale_limit=(-0.4, 0),
-                 border_mode=0, value=(int(0.485*255), int(0.456*255), int(0.406*255)), always_apply=True),
+            dict(type='ShiftScaleRotate', shift_limit=0, rotate_limit=0, scale_limit=(-0.2, 0), border_mode=0, value=0),
+            dict(type='RandomSizedBBoxSafeCrop', height=300, width=300, erosion_rate=0.20),
             dict(type='HorizontalFlip'),
         ],
         torch=[
@@ -119,7 +119,7 @@ if __name__ == '__main__':
             dict(type='Dropout', p=(0.0, 0.1))
         ]
     )
-    ds = DetectionDataset('/home/sato/work/object_detection/data/voc', pipeline)
+    ds = DetectionDataset('/home/sato/work/object_detection/data/voc07', pipeline)
 
     images = []
     for _ in range(40):

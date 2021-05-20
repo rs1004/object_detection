@@ -15,7 +15,7 @@ class UpAdd(nn.Module):
     def forward(self, cx, fx):
         _, _, h, w = cx.size()
         cx = self.conv(cx)
-        fx = F.upsample_bilinear(fx, size=(h, w))
+        fx = F.interpolate(fx, size=(h, w), mode='bilinear', align_corners=True)
         return cx + fx
 
 
