@@ -43,6 +43,11 @@ class GridErasing(nn.Module):
 
 
 class Dropout(nn.Module):
+    """ 画素値を Dropout する
+    1) 確率でランダムなピクセルを 0 にする
+    2) 0 に近い値を 0 にする（ Pad の fill_value が 0 になる想定）
+    """
+
     def __init__(self, p=(0, 0.05)):
         super(Dropout, self).__init__()
         if isinstance(p, tuple):
@@ -52,7 +57,9 @@ class Dropout(nn.Module):
 
     def forward(self, x: torch.Tensor):
         _, h, w = x.size()
-        return x * (torch.rand(1, h, w) > self.p)
+        x = x * (torch.rand(1, h, w) > self.p)
+        out = x.where(x.abs() >= 0.01, torch.zeros_like(x))
+        return out
 
 
 class Pipeline:

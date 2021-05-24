@@ -107,10 +107,9 @@ if __name__ == '__main__':
 
     pipeline = dict(
         albu=[
-            dict(type='Resize', height=300, width=300),
             dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
-            dict(type='ShiftScaleRotate', shift_limit=0, rotate_limit=0, scale_limit=(-0.2, 0), border_mode=0, value=0),
-            dict(type='RandomSizedBBoxSafeCrop', height=300, width=300, erosion_rate=0.20),
+            dict(type='ShiftScaleRotate', shift_limit=0, rotate_limit=0, scale_limit=(-0.0, -0.0), border_mode=0, value=(0.485*255, 0.456*255, 0.406*255), p=1),
+            dict(type='RandomSizedBBoxSafeCrop', height=300, width=300, erosion_rate=0.50),
             dict(type='HorizontalFlip'),
         ],
         torch=[
@@ -123,7 +122,7 @@ if __name__ == '__main__':
 
     images = []
     for _ in range(40):
-        image, image_meta, bboxes, labels = ds.__getitem__(0)
+        image, image_meta, bboxes, labels = ds.__getitem__(17)
         image = Image.fromarray((image.permute(1, 2, 0) * 255).numpy().astype('uint8'))
         draw = ImageDraw.Draw(image)
         for (cx, cy, w, h), label in zip(bboxes, labels):
