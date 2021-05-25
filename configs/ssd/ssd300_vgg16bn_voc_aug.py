@@ -21,9 +21,11 @@ data = dict(
     train_pipeline=dict(
         albu=[
             dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
-            dict(type='ShiftScaleRotate', shift_limit=0, rotate_limit=0, scale_limit=(-0.75, -0.0), border_mode=0,
-                 value=tuple(v * 255 for v in __mean)
-                 ),
+            dict(type='ChannelShuffle'),
+            dict(
+                type='ShiftScaleRotate', shift_limit=0, rotate_limit=0, scale_limit=(-0.75, -0.0), border_mode=0,
+                value=tuple(v * 255 for v in __mean)
+            ),
             dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.48),
             dict(type='HorizontalFlip'),
         ],
@@ -56,7 +58,7 @@ optimizer = dict(type='SGD', lr=0.0026, momentum=0.9, weight_decay=0.0005)
 scheduler = dict(type='ExponentialLRWarmUpRestarts', gamma=0.97, eta_min=0.00026, T_up=10)
 runtime = dict(
     batch_size=32,
-    epochs=100,
+    epochs=150,
     out_dir=__out_dir,
     resume=True,
     eval_interval=10
