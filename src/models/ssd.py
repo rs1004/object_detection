@@ -16,20 +16,20 @@ class SSD(DetectionNet):
         self.features = self._trace_features(backborn.features[:-1])
 
         self.extras = nn.ModuleDict([
-            ('conv6_1', ConvBlock(512, 1024, kernel_size=3, padding=1)),
-            ('conv7_1', ConvBlock(1024, 1024, kernel_size=1)),
+            ('conv6_1', ConvBlock(512, 1024, kernel_size=3, padding=6, dilation=6, is_bn=False)),
+            ('conv7_1', ConvBlock(1024, 1024, kernel_size=1, is_bn=False)),
 
-            ('conv8_1', ConvBlock(1024, 256, kernel_size=1)),
-            ('conv8_2', ConvBlock(256, 512, kernel_size=3, stride=2, padding=1)),
+            ('conv8_1', ConvBlock(1024, 256, kernel_size=1, is_bn=False)),
+            ('conv8_2', ConvBlock(256, 512, kernel_size=3, stride=2, padding=1, is_bn=False)),
 
-            ('conv9_1', ConvBlock(512, 128, kernel_size=1)),
-            ('conv9_2', ConvBlock(128, 256, kernel_size=3, stride=2, padding=1)),
+            ('conv9_1', ConvBlock(512, 128, kernel_size=1, is_bn=False)),
+            ('conv9_2', ConvBlock(128, 256, kernel_size=3, stride=2, padding=1, is_bn=False)),
 
-            ('conv10_1', ConvBlock(256, 128, kernel_size=1)),
-            ('conv10_2', ConvBlock(128, 256, kernel_size=3)),
+            ('conv10_1', ConvBlock(256, 128, kernel_size=1, is_bn=False)),
+            ('conv10_2', ConvBlock(128, 256, kernel_size=3, is_bn=False)),
 
-            ('conv11_1', ConvBlock(256, 128, kernel_size=1)),
-            ('conv11_2', ConvBlock(128, 256, kernel_size=3)),
+            ('conv11_1', ConvBlock(256, 128, kernel_size=1, is_bn=False)),
+            ('conv11_2', ConvBlock(128, 256, kernel_size=3, is_bn=False)),
         ])
 
         self.localizers = nn.ModuleDict({

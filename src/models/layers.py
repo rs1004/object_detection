@@ -3,14 +3,14 @@ import torch.nn as nn
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, in_channels=None, out_channels=None, kernel_size=None, stride=1, padding=0, is_bn=True, act='relu', args=None):
+    def __init__(self, in_channels=None, out_channels=None, kernel_size=None, stride=1, padding=0, is_bn=True, act='relu', dilation=1, args=None):
         super(ConvBlock, self).__init__()
         if args is not None:
             self.conv = args.get('conv')
             self.bn = args.get('bn', nn.Identity())
             self.act = args.get('act')
         else:
-            self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding)
+            self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation)
             self.bn = nn.BatchNorm2d(out_channels) if is_bn else nn.Identity()
             if act == 'relu':
                 self.act = nn.ReLU(inplace=True)
