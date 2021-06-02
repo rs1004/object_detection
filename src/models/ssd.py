@@ -68,20 +68,20 @@ class SSD(DetectionNet):
             if name in self.localizers:
                 res[name] = x
 
-        out_locs = []
-        out_confs = []
+        pred_locs = []
+        pred_confs = []
         for name in self.localizers:
-            out_locs.append(
+            pred_locs.append(
                 self.localizers[name](res[name]).permute(0, 2, 3, 1).contiguous(
                 ).view(batch_size, -1, 4)
             )
-            out_confs.append(
+            pred_confs.append(
                 self.classifiers[name](res[name]).permute(0, 2, 3, 1).contiguous(
                 ).view(batch_size, -1, self.nc)
             )
 
-        out_locs, out_confs = torch.cat(out_locs, dim=1), torch.cat(out_confs, dim=1)
-        return out_locs, out_confs
+        pred_locs, pred_confs = torch.cat(pred_locs, dim=1), torch.cat(pred_confs, dim=1)
+        return pred_locs, pred_confs
 
     def _trace_features(self, vgg_features: nn.Sequential) -> nn.ModuleDict:
         """ torchvision の VGG16 モデルの特徴抽出層を ConvBlock にトレースする
@@ -168,55 +168,70 @@ class SSD(DetectionNet):
                 loss_conf: xxx
             }
         """
-        out_locs, out_confs = outputs
-
-        device = out_locs.device
-        dboxes = self.dboxes.to(device)
-        B = out_locs.size(0)
+        pred_locs, pred_confs = outputs
+        device = pred_locs.device
         loss = loss_loc = loss_conf = 0
-        for locs, confs, bboxes, labels in zip(out_locs, out_confs, gt_bboxes, gt_labels):
-            # to GPU
-            bboxes = bboxes.to(device)
-            labels = labels.to(device)
 
-            # [Step 1]
-            #   各 Default Box を BBox に対応させ、Positive, Negative の判定を行う
-            #   - max_iou >= 0.5 の場合、Positive Box とみなし、最大 iou の BBox を対応させる
-            #   - max_iou <  0.5 の場合、Negative Box とみなす
-            #   - N := Positive Box の個数。N = 0 ならば Loss = 0 とする（skip する）
+        # [Step 1]
+        #   target を作成する
+        #   - Pred を GT に対応させる
+        #     - Pred の Default Box との IoU が最大となる BBox, Label
+        #   - 最大 IoU が 0.5 未満の場合、Label を 0 に設定する
+
+        B, P, C = pred_confs.size()
+        target_locs = torch.zeros(B, P, 4)
+        target_labels = torch.zeros(B, P, dtype=torch.long)
+
+        dboxes = self.dboxes
+        for i in range(B):
+            bboxes = gt_bboxes[i]
+            labels = gt_labels[i]
+
             bboxes_xyxy = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
             dboxes_xyxy = box_convert(dboxes, in_fmt='cxcywh', out_fmt='xyxy')
             max_ious, bbox_ids = box_iou(dboxes_xyxy, bboxes_xyxy).max(dim=1)
-            pos_ids, neg_ids = (max_ious >= iou_thresh).nonzero().reshape(-1), (max_ious < iou_thresh).nonzero().reshape(-1)
-            N = len(pos_ids)
-            if N == 0:
-                continue
 
-            # [Step 2]
-            #   Positive Box に対して、 Localization Loss を計算する
-            loss_loc += (1 / N) * F.smooth_l1_loss(
-                locs[pos_ids],
-                self._calc_delta(bboxes=bboxes[bbox_ids[pos_ids]], dboxes=dboxes[pos_ids]),
-                reduction='sum'
-            )
+            bboxes = bboxes[bbox_ids]
+            locs = self._calc_delta(bboxes, dboxes)
+            labels = labels[bbox_ids]
+            labels[max_ious.less(0.5)] = 0  # TODO: gtに対するpriorをpositiveにする操作
 
+            target_locs[i] = locs
+            target_labels[i] = labels
+
+        target_locs = target_locs.to(device)
+        target_labels = target_labels.to(device)
+
+        # [Step 2]
+        #   pos_mask, neg_mask を作成する
+        #   - pos_mask: Label が 0 でないもの
+        #   - neg_mask: Positive でない、かつ、cross_entropy_loss の上位 3 * (Positive の件数) 以内のもの (Hard Negative Mining)
+
+        pos_mask = target_labels > 0
+
+        loss_neg = F.cross_entropy(pred_confs.view(-1, C), target_labels.view(-1), reduction='none').view(B, -1)
+        loss_neg[pos_mask] = 0
+        loss_neg_rank = loss_neg.argsort(descending=True).argsort()
+        neg_mask = loss_neg_rank < 3 * pos_mask.sum(dim=1, keepdims=True)
+
+        N = pos_mask.sum()
+        if N > 0:
             # [Step 3]
-            #   Positive / Negative Box に対して、Confidence Loss を計算する
-            #   - Negative Box の labels は 0 とする
-            #   - Negative Box は Loss の上位 len(pos_ids) * 3 個のみを計算に使用する (Hard Negative Mining)
-            loss_conf += (1 / N) * (
-                F.cross_entropy(confs[pos_ids], labels[bbox_ids[pos_ids]], reduction='sum') +
-                F.cross_entropy(confs[neg_ids], torch.zeros_like(labels[bbox_ids[neg_ids]]), reduction='none').topk(k=int(N * 3)).values.sum()
-            )
+            #   Positive に対して、 Localization Loss を計算する
+            loss_loc = (1 / N) * F.smooth_l1_loss(pred_locs[pos_mask], target_locs[pos_mask], reduction='mean')
 
-        # [Step 4]
-        #   損失の和を計算する
-        loss = loss_conf + alpha * loss_loc
+            # [Step 4]
+            #   Positive & Negative に対して、Confidence Loss を計算する
+            loss_conf = (1 / N) * F.cross_entropy(pred_confs[pos_mask + neg_mask], target_labels[pos_mask + neg_mask], reduction='mean')
+
+            # [Step 5]
+            #   損失の和を計算する
+            loss = loss_conf + alpha * loss_loc
 
         return {
-            'loss': (1 / B) * loss,
-            'loss_loc': (1 / B) * alpha * loss_loc,
-            'loss_conf': (1 / B) * loss_conf
+            'loss': loss,
+            'loss_loc': loss_loc,
+            'loss_conf': loss_conf
         }
 
     def _calc_delta(self, bboxes: torch.Tensor, dboxes: torch.Tensor, std: list = [0.1, 0.2]) -> torch.Tensor:
@@ -272,18 +287,18 @@ class SSD(DetectionNet):
                     - 予測信頼度 : [N, 8732]
                     - 予測クラス : [N, 8732]
         """
-        out_locs, out_confs = outputs
-        out_confs = F.softmax(out_confs, dim=-1)
+        pred_locs, pred_confs = outputs
+        pred_confs = F.softmax(pred_confs, dim=-1)
 
         # to CPU
-        out_locs = out_locs.detach().cpu()
-        out_confs = out_confs.detach().cpu()
+        pred_locs = pred_locs.detach().cpu()
+        pred_confs = pred_confs.detach().cpu()
 
         pred_bboxes = []
         pred_confs = []
         pred_class_ids = []
 
-        for locs, confs in zip(out_locs, out_confs):
+        for locs, confs in zip(pred_locs, pred_confs):
             confs, class_ids = confs.max(dim=-1)
             pos_ids = ((class_ids != 0) * (confs >= conf_thresh)).nonzero().reshape(-1)  # 0 is background class
             confs, class_ids = confs[pos_ids], class_ids[pos_ids]
@@ -309,9 +324,9 @@ if __name__ == '__main__':
     for coord in model.dboxes:
         print(coord)
 
-    out_locs = torch.rand(4, 8732, 4)
-    out_confs = torch.rand(4, 8732, 21)
-    outputs = (out_locs, out_confs)
+    pred_locs = torch.rand(4, 8732, 4)
+    pred_confs = torch.rand(4, 8732, 21)
+    outputs = (pred_locs, pred_confs)
     gt_bboxes = [torch.rand(5, 4) for _ in range(4)]
     gt_labels = [torch.randint(0, 20, (5,)) for _ in range(4)]
 
