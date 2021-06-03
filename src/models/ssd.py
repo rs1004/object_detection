@@ -176,6 +176,7 @@ class SSD(DetectionNet):
         #   target を作成する
         #   - Pred を GT に対応させる
         #     - Pred の Default Box との IoU が最大となる BBox, Label
+        #     - BBox との IoU が最大となる Default Box -> その BBox に割り当てる
         #   - 最大 IoU が 0.5 未満の場合、Label を 0 に設定する
 
         B, P, C = pred_confs.size()
@@ -189,12 +190,20 @@ class SSD(DetectionNet):
 
             bboxes_xyxy = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
             dboxes_xyxy = box_convert(dboxes, in_fmt='cxcywh', out_fmt='xyxy')
-            max_ious, bbox_ids = box_iou(dboxes_xyxy, bboxes_xyxy).max(dim=1)
+            ious = box_iou(dboxes_xyxy, bboxes_xyxy)
+            best_ious, best_dbox_ids = ious.max(dim=0)
+            max_ious, matched_bbox_ids = ious.max(dim=1)
 
-            bboxes = bboxes[bbox_ids]
+            # 各 BBox に対し最大 IoU を取る Default Box を選ぶ -> その BBox に割り当てる
+            matched_bbox_ids[best_dbox_ids] = torch.arange(bboxes.size(0))
+            max_ious[best_dbox_ids] = best_ious
+
+            bboxes = bboxes[matched_bbox_ids]
             locs = self._calc_delta(bboxes, dboxes)
-            labels = labels[bbox_ids]
-            labels[max_ious.less(0.5)] = 0  # TODO: gtに対するpriorをpositiveにする操作
+            labels = labels[matched_bbox_ids]
+            ls = labels[best_dbox_ids]
+            labels[max_ious.less(iou_thresh)] = 0  # 0 が背景クラス. Positive Class は 1 ~
+            labels[best_dbox_ids] = ls
 
             target_locs[i] = locs
             target_labels[i] = labels
