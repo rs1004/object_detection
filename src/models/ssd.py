@@ -1,11 +1,48 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from collections import Counter
 from itertools import product
 from torchvision.ops import box_iou, box_convert
-from models.layers import ConvBlock, L2Norm
 from models.base import DetectionNet
+
+
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels=None, out_channels=None, kernel_size=None, stride=1, padding=0, is_bn=True, dilation=1, args=None):
+        super(ConvBlock, self).__init__()
+        if args is not None:
+            self.conv = args.get('conv')
+            self.bn = args.get('bn', None)
+            self.act = args.get('act')
+        else:
+            self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation)
+            self.bn = nn.BatchNorm2d(out_channels) if is_bn else None
+            self.act = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.conv(x)
+        if self.bn:
+            x = self.bn(x)
+        out = self.act(x)
+        return out
+
+
+class L2Norm(nn.Module):
+    def __init__(self, n_channels, scale=20):
+        super(L2Norm, self).__init__()
+        self.n_channels = n_channels
+        self.gamma = scale
+        self.eps = 1e-10
+        self.weight = nn.Parameter(torch.Tensor(self.n_channels))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.constant_(self.weight, self.gamma)
+
+    def forward(self, x):
+        norm = x.pow(2).sum(dim=1, keepdim=True).sqrt() + self.eps
+        x = torch.div(x, norm)
+        out = self.weight.unsqueeze(0).unsqueeze(2).unsqueeze(3).expand_as(x) * x
+        return out
 
 
 class SSD(DetectionNet):
@@ -13,12 +50,9 @@ class SSD(DetectionNet):
         super(SSD, self).__init__()
         self.nc = num_classes + 1  # add background class
 
-        self.features = self._trace_features(backborn.features[:-1])
+        self.features = self._trace_backborn(backborn)
 
         self.extras = nn.ModuleDict([
-            ('conv6_1', ConvBlock(512, 1024, kernel_size=3, padding=6, dilation=6, is_bn=False)),
-            ('conv7_1', ConvBlock(1024, 1024, kernel_size=1, is_bn=False)),
-
             ('conv8_1', ConvBlock(1024, 256, kernel_size=1, is_bn=False)),
             ('conv8_2', ConvBlock(256, 512, kernel_size=3, stride=2, padding=1, is_bn=False)),
 
@@ -83,40 +117,52 @@ class SSD(DetectionNet):
         pred_locs, pred_confs = torch.cat(pred_locs, dim=1), torch.cat(pred_confs, dim=1)
         return pred_locs, pred_confs
 
-    def _trace_features(self, vgg_features: nn.Sequential) -> nn.ModuleDict:
+    def _trace_backborn(self, vgg: nn.Module) -> nn.ModuleDict:
         """ torchvision の VGG16 モデルの特徴抽出層を ConvBlock にトレースする
 
         Args:
-            vgg_features (nn.Sequential): features of vgg16
+            vgg (nn.Sequential): vgg16 or vgg16_bn
 
         Returns:
-            nn.ModuleDict: ConvBlock の集合. conv1_1 ~ conv5_3 + new pool5
+            nn.ModuleDict: ConvBlock の集合. conv1_1 ~ conv5_3 + new pool5 + conv6_1, conv7_1
         """
-        for m in vgg_features:
+        for m in vgg.features:
             if isinstance(m, nn.MaxPool2d):
                 m.ceil_mode = True
 
-        l_counter = Counter({'layer': 1})
-        m_counter = Counter()
+        layer = block = 1
+
         features = nn.ModuleDict()
         args = {}
-        for m in vgg_features:
+        for m in vgg.features[:-1]:
             if isinstance(m, nn.Conv2d):
                 args['conv'] = m
             elif isinstance(m, nn.BatchNorm2d):
                 args['bn'] = m
             elif isinstance(m, nn.ReLU):
                 args['act'] = m
-                m_counter['block'] += 1
-                features[f"conv{l_counter['layer']}_{m_counter['block']}"] = ConvBlock(args=args)
-                args.clear()
+                features[f'conv{layer}_{block}'] = ConvBlock(args=args)
+                block += 1
             elif isinstance(m, nn.MaxPool2d):
-                features[f"pool{l_counter['layer']}"] = m
-                l_counter['layer'] += 1
-                m_counter.clear()
-                args.clear()
+                features[f'pool{layer}'] = m
+                layer += 1
+                block = 1
+
         # change pool5 from 2 x 2 - s2 to 3 x 3 - s1
-        features[f"pool{l_counter['layer']}"] = nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
+        features['pool5'] = nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
+
+        # linear layer -> conv layer (subsample weight)
+        features['conv6_1'] = ConvBlock(512, 1024, kernel_size=3, padding=6, dilation=6, is_bn=False)
+        features['conv7_1'] = ConvBlock(1024, 1024, kernel_size=1, is_bn=False)
+
+        vgg_c = backborn.classifier
+        state_dict = {
+            'conv6_1.conv.weight': vgg_c[0].weight.reshape(4096, 512, 7, 7)[::4, :, ::3, ::3],
+            'conv6_1.conv.bias': vgg_c[0].bias[::4],
+            'conv7_1.conv.weight': vgg_c[3].weight.reshape(4096, 4096, 1, 1)[::4, ::4],
+            'conv7_1.conv.bias':  vgg_c[3].bias[::4]
+        }
+        features.load_state_dict(state_dict, strict=False)
 
         return features
 
@@ -326,12 +372,11 @@ if __name__ == '__main__':
     from torchvision.models import vgg16_bn
     x = torch.rand(2, 3, 300, 300)
 
-    backborn = vgg16_bn()
+    backborn = vgg16_bn(pretrained=True)
     model = SSD(num_classes=20, backborn=backborn)
+    print(model)
     outputs = model(x)
     print(outputs[0].shape, outputs[1].shape)
-    for coord in model.dboxes:
-        print(coord)
 
     pred_locs = torch.rand(4, 8732, 4)
     pred_confs = torch.rand(4, 8732, 21)
@@ -341,13 +386,13 @@ if __name__ == '__main__':
 
     print(model.loss(outputs, gt_bboxes, gt_labels))
 
-    from PIL import Image, ImageDraw
-    from tqdm import tqdm
-    images = []
-    for cx, cy, w, h in tqdm(model.dboxes * 300):
-        image = Image.fromarray(torch.zeros((300, 300, 3)).numpy().astype('uint8'))
-        draw = ImageDraw.Draw(image)
-        draw.rectangle((int(cx - w/2), int(cy - h/2), int(cx + w/2), int(cy + h/2)), outline=(255, 255, 255), width=2)
-        images.append(image.copy())
-    images[0].save('./demo/dboxes.gif', save_all=True, append_images=images[1:])
-    images[0].save('./demo/dboxes_fast.gif', save_all=True, append_images=images[::12])
+    # from PIL import Image, ImageDraw
+    # from tqdm import tqdm
+    # images = []
+    # for cx, cy, w, h in tqdm(model.dboxes * 300):
+    #     image = Image.fromarray(torch.zeros((300, 300, 3)).numpy().astype('uint8'))
+    #     draw = ImageDraw.Draw(image)
+    #     draw.rectangle((int(cx - w/2), int(cy - h/2), int(cx + w/2), int(cy + h/2)), outline=(255, 255, 255), width=2)
+    #     images.append(image.copy())
+    # images[0].save('./demo/dboxes.gif', save_all=True, append_images=images[1:])
+    # images[0].save('./demo/dboxes_fast.gif', save_all=True, append_images=images[::12])

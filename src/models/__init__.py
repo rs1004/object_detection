@@ -1,16 +1,11 @@
 from .ssd import SSD
-from .ssd2 import SSD2
-from .yolov3 import YoloV3
 from .retinanet import RetinaNet
-from .darknet import Darknet53  # noqa
 from torchvision.models import *  # noqa
 import torch
 
 
 MODELS = {
     'ssd': SSD,
-    'ssd2': SSD2,
-    'yolov3': YoloV3,
     'retinanet': RetinaNet
 }
 
