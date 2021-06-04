@@ -58,7 +58,7 @@ runtime = dict(
     batch_size=32,
     epochs=100,
     out_dir=__out_dir,
-    resume=True,
+    resume=False,
     eval_interval=10
 )
 
