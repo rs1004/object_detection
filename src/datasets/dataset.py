@@ -107,9 +107,10 @@ if __name__ == '__main__':
 
     pipeline = dict(
         albu=[
-            dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
-            dict(type='ShiftScaleRotate', shift_limit=0, rotate_limit=0, scale_limit=(-0.0, -0.0), border_mode=0, value=(0.485*255, 0.456*255, 0.406*255), p=1),
-            dict(type='RandomSizedBBoxSafeCrop', height=300, width=300, erosion_rate=0.50),
+            dict(type='PhotoMetricDistortion', brightness_delta=32, contrast_range=(0.5, 1.5), saturation_range=(0.5, 1.5), hue_delta=18),
+            dict(type='Expand', mean=(0.485*255, 0.456*255, 0.406*255), ratio_range=(1, 4)),
+            dict(type='MinIoURandomCrop'),
+            dict(type='Resize', height=size, width=size),
             dict(type='HorizontalFlip'),
         ],
         torch=[

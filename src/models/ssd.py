@@ -155,7 +155,7 @@ class SSD(DetectionNet):
         features['conv6_1'] = ConvBlock(512, 1024, kernel_size=3, padding=6, dilation=6, is_bn=False)
         features['conv7_1'] = ConvBlock(1024, 1024, kernel_size=1, is_bn=False)
 
-        vgg_c = backborn.classifier
+        vgg_c = vgg.classifier
         state_dict = {
             'conv6_1.conv.weight': vgg_c[0].weight.reshape(4096, 512, 7, 7)[::4, :, ::3, ::3],
             'conv6_1.conv.bias': vgg_c[0].bias[::4],

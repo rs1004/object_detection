@@ -20,13 +20,10 @@ data = dict(
     bbox_fmt='cxcywh',
     train_pipeline=dict(
         albu=[
-            dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
-            dict(type='ChannelShuffle'),
-            dict(
-                type='ShiftScaleRotate', shift_limit=0, rotate_limit=0, scale_limit=(-0.75, -0.0), border_mode=0,
-                value=tuple(v * 255 for v in __mean)
-            ),
-            dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.48),
+            dict(type='PhotoMetricDistortion', brightness_delta=32, contrast_range=(0.5, 1.5), saturation_range=(0.5, 1.5), hue_delta=18),
+            dict(type='Expand', mean=tuple(v * 255 for v in __mean), ratio_range=(1, 4)),
+            dict(type='MinIoURandomCrop'),
+            dict(type='Resize', height=__input_size, width=__input_size),
             dict(type='HorizontalFlip'),
         ],
         torch=[

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import albumentations as A
 import torchvision.transforms as T
+from datasets import aug_albu as AA  # noqa
 from random import random, randint
 
 
@@ -10,11 +11,14 @@ class Compose:
         self.transforms = transforms
 
     def __call__(self, image, image_meta):
+        image = image.astype('uint8')
         for t in self.transforms:
+            image = t(image)
             if isinstance(t, T.Normalize):
                 image_meta['norm_mean'] = t.mean
                 image_meta['norm_std'] = t.std
-            image = t(image)
+                pad_value = torch.tensor([(int(m * 255) / 255. - m) / s for m, s in zip(t.mean, t.std)])
+                image[(image - pad_value[:, None, None]).abs() < 1e-4] = 0.
         return image, image_meta
 
 
@@ -58,8 +62,7 @@ class Dropout(nn.Module):
     def forward(self, x: torch.Tensor):
         _, h, w = x.size()
         x = x * (torch.rand(1, h, w) > self.p)
-        out = x.where(x.abs() >= 0.01, torch.zeros_like(x))
-        return out
+        return x
 
 
 class Pipeline:
@@ -94,7 +97,11 @@ class Pipeline:
     def _build_albu(self, pipe_cfg):
         transforms = []
         for cfg in pipe_cfg:
-            transforms.append(eval('A.' + cfg.pop('type'))(**cfg))
+            type = cfg.pop('type')
+            try:
+                transforms.append(eval('A.' + type)(**cfg))
+            except AttributeError:
+                transforms.append(eval('AA.' + type)(**cfg))
         return A.Compose(
             transforms,
             bbox_params=A.BboxParams(format='coco', label_fields=['labels'])
