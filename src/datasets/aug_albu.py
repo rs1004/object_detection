@@ -47,7 +47,6 @@ class PhotoMetricDistortion:
             return results
 
         image = results['image']
-        image = image.astype(np.float32)
 
         # random brightness
         if np.random.randint(2):

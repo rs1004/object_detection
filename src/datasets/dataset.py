@@ -37,7 +37,7 @@ class DetectionDataset(Dataset):
         image_path, image_meta, annotation = self.data_list[i]
 
         # read image
-        image = np.array(Image.open(image_path))
+        image = np.array(Image.open(image_path)).astype(np.float32)
 
         # read meta
         image_meta = {

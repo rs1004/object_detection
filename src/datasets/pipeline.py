@@ -11,14 +11,14 @@ class Compose:
         self.transforms = transforms
 
     def __call__(self, image, image_meta):
-        image = image.astype('uint8')
         for t in self.transforms:
             image = t(image)
-            if isinstance(t, T.Normalize):
+            if isinstance(t, T.ToTensor):
+                image /= 255.  # ToTensor のinput が np.float32 の場合は正規化されないため
+            elif isinstance(t, T.Normalize):
                 image_meta['norm_mean'] = t.mean
                 image_meta['norm_std'] = t.std
-                pad_value = torch.tensor([(int(m * 255) / 255. - m) / s for m, s in zip(t.mean, t.std)])
-                image[(image - pad_value[:, None, None]).abs() < 1e-4] = 0.
+
         return image, image_meta
 
 
