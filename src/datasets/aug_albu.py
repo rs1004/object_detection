@@ -7,8 +7,19 @@ import numpy as np
 import cv2
 
 
+class ToFloat32:
+    """ Convert image from np.uint8 to np.float32
+    """
+
+    def __call__(self, *args, force_apply=True, **results):
+        assert 'image' in results
+        results['image'] = results['image'].astype(np.float32)
+
+        return results
+
+
 class PhotoMetricDistortion:
-    """Apply photometric distortion to image sequentially, every transformation
+    """ Apply photometric distortion to image sequentially, every transformation
     is applied with a probability of 0.5. The position of random contrast is in
     second or second to last.
 
@@ -96,7 +107,7 @@ class PhotoMetricDistortion:
 
 
 class Expand:
-    """Random expand the image & bboxes.
+    """ Random expand the image & bboxes.
     Randomly place the original image on a canvas of 'ratio' x original image
     size filled with mean values. The ratio is in the range of ratio_range.
 
@@ -150,7 +161,7 @@ class Expand:
 
 
 class MinIoURandomCrop:
-    """Random crop the image & bboxes, the cropped patches have minimum IoU
+    """ Random crop the image & bboxes, the cropped patches have minimum IoU
     requirement with original image & bboxes, the IoU threshold is randomly
     selected from min_ious.
 

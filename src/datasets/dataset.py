@@ -37,7 +37,7 @@ class DetectionDataset(Dataset):
         image_path, image_meta, annotation = self.data_list[i]
 
         # read image
-        image = np.array(Image.open(image_path)).astype(np.float32)
+        image = np.array(Image.open(image_path))
 
         # read meta
         image_meta = {
@@ -107,6 +107,7 @@ if __name__ == '__main__':
 
     pipeline = dict(
         albu=[
+            dict(type='ToFloat32'),
             dict(type='PhotoMetricDistortion', brightness_delta=32, contrast_range=(0.5, 1.5), saturation_range=(0.5, 1.5), hue_delta=18),
             dict(type='Expand', mean=(0.485*255, 0.456*255, 0.406*255), ratio_range=(1, 4)),
             dict(type='MinIoURandomCrop'),

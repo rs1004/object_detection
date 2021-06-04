@@ -20,6 +20,7 @@ data = dict(
     bbox_fmt='cxcywh',
     train_pipeline=dict(
         albu=[
+            dict(type='ToFloat32'),
             dict(type='PhotoMetricDistortion', brightness_delta=32, contrast_range=(0.5, 1.5), saturation_range=(0.5, 1.5), hue_delta=18),
             dict(type='Expand', mean=tuple(v * 255 for v in __mean), ratio_range=(1, 4)),
             dict(type='MinIoURandomCrop'),
