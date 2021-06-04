@@ -35,6 +35,7 @@ data = dict(
     ),
     val_pipeline=dict(
         albu=[
+            dict(type='ToFloat32'),
             dict(type='Resize', height=__input_size, width=__input_size)
         ],
         torch=[
