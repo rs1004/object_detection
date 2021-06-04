@@ -57,7 +57,7 @@ if Path(weights_path).exists():
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
-predictor = Predictor(classes=dataset.classes, out_dir=test_dir, **cfg.predictor)
+predictor = Predictor(**cfg.predictor)
 evaluator = Evaluator(**cfg.evaluator)
 
 torch.backends.cudnn.benchmark = True
@@ -100,9 +100,6 @@ for images, image_metas, gt_bboxes, gt_labels in tqdm(dataloader, total=len(data
     images = images.detach().cpu()
     bboxes, confs, class_ids = model.pre_predict(outputs)
     result += predictor.run(images, image_metas, bboxes, confs, class_ids)
-
-    if len(result) > 20:
-        break
 
 if len(result) > 0:
     evaluator.dump_pred(result)

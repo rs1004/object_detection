@@ -329,7 +329,7 @@ class SSD(DetectionNet):
         bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1).contiguous()
         return bboxes
 
-    def pre_predict(self, outputs: tuple, conf_thresh: float = 0.4) -> tuple:
+    def pre_predict(self, outputs: tuple, conf_thresh: float = 0.1) -> tuple:
         """ モデルの出力結果を予測データに変換する
 
         Args:
@@ -350,7 +350,7 @@ class SSD(DetectionNet):
         pred_confs = pred_confs.detach().cpu()
 
         pred_bboxes = []
-        pred_confs = []
+        pred_scores = []
         pred_class_ids = []
 
         for locs, confs in zip(pred_locs, pred_confs):
@@ -361,10 +361,10 @@ class SSD(DetectionNet):
             bboxes = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
 
             pred_bboxes.append(bboxes)
-            pred_confs.append(confs)
+            pred_scores.append(confs)
             pred_class_ids.append(class_ids)
 
-        return pred_bboxes, pred_confs, pred_class_ids
+        return pred_bboxes, pred_scores, pred_class_ids
 
 
 if __name__ == '__main__':
