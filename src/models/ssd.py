@@ -273,20 +273,20 @@ class SSD(DetectionNet):
         if N > 0:
             # [Step 3]
             #   Positive に対して、 Localization Loss を計算する
-            loss_loc = (1 / N) * F.smooth_l1_loss(pred_locs[pos_mask], target_locs[pos_mask], reduction='mean')
+            loss_loc = (1 / N) * F.smooth_l1_loss(pred_locs[pos_mask], target_locs[pos_mask], reduction='sum')
 
             # [Step 4]
             #   Positive & Negative に対して、Confidence Loss を計算する
-            loss_conf = (1 / N) * F.cross_entropy(pred_confs[pos_mask + neg_mask], target_labels[pos_mask + neg_mask], reduction='mean')
+            loss_conf = (1 / N) * F.cross_entropy(pred_confs[pos_mask + neg_mask], target_labels[pos_mask + neg_mask], reduction='sum')
 
             # [Step 5]
             #   損失の和を計算する
             loss = loss_conf + alpha * loss_loc
 
         return {
-            'loss': loss,
-            'loss_loc': loss_loc,
-            'loss_conf': loss_conf
+            'loss': (1 / B) * loss,
+            'loss_loc': (1 / B) * loss_loc,
+            'loss_conf': (1 / B) * loss_conf
         }
 
     def _calc_delta(self, bboxes: torch.Tensor, dboxes: torch.Tensor, std: list = [0.1, 0.2]) -> torch.Tensor:
