@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-__data = 'voc07+12'
+__data = 'voc07'
 __input_size = 300
 __version = 'ssd300_vgg16_voc_aug'
 
@@ -54,7 +54,7 @@ train_conditions = [
     dict(keys=['.'])
 ]
 optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
-scheduler = dict(type='MultiStepLRWarmUpRestarts', milestones=[50, 75], gamma=0.1, eta_min=0.0001, T_up=10)
+scheduler = dict(type='MultiStepLR', milestones=[100], gamma=0.1)
 runtime = dict(
     batch_size=32,
     epochs=100,
@@ -65,7 +65,7 @@ runtime = dict(
 
 # 予測・評価
 predictor = dict(
-    iou_thresh=0.5
+    iou_thresh=0.45
 )
 evaluator = dict(
     anno_path=__data_dir + '/annotations/instances_val.json',
