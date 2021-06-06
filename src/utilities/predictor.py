@@ -35,7 +35,7 @@ class Predictor:
             colors = [tuple([int(i * 255) for i in c]) for c in sns.color_palette('hls', n_colors=len(classes))]
             self.palette = dict(zip(classes.keys(), colors))
 
-    def run(self, images: torch.Tensor, image_metas: list, pred_bboxes: torch.Tensor, pred_confs: torch.Tensor, pred_class_ids: torch.Tensor) -> list:
+    def run(self, images: torch.Tensor, image_metas: list, pred_bboxes: torch.Tensor, pred_scores: torch.Tensor, pred_class_ids: torch.Tensor) -> list:
         """ 予測結果から条件を満たすものを抽出し、結果の辞書のリストを作成
             予測結果 -> 信頼度でフィルタ -> NMS でフィルタ -> 最終予測結果
 
@@ -43,30 +43,30 @@ class Predictor:
             images (torch.Tensor): 画像データ [N, 3, H, W]
             image_metas (list): 画像メタデータ
             pred_bboxes (torch.Tensor): 予測 BBox [N, num_preds, 4] (coord fmt: [xmin, ymin, xmax, ymax])
-            pred_confs (torch.Tensor): 予測信頼度 [N, num_preds]
+            pred_scores (torch.Tensor): 予測信頼度 [N, num_preds]
             pred_class_ids (torch.Tensor): 予測クラス ID [N, num_preds]
 
         Returns:
             list: 最終予測結果
         """
         result = []
-        for image, image_meta, bboxes, confs, class_ids in zip(images, image_metas, pred_bboxes, pred_confs, pred_class_ids):
+        for image, image_meta, bboxes, scores, class_ids in zip(images, image_metas, pred_bboxes, pred_scores, pred_class_ids):
 
             # 重複の除去（non-maximum supression）
-            keep = batched_nms(bboxes, confs, class_ids, iou_threshold=self.iou_thresh)
+            keep = batched_nms(bboxes, scores, class_ids, iou_threshold=self.iou_thresh)
             bboxes = box_convert(bboxes[keep], in_fmt='xyxy', out_fmt='xywh')
-            confs = confs[keep]
+            scores = scores[keep]
             class_ids = class_ids[keep]
 
             H, W = image_meta['height'], image_meta['width']
-            for bbox, conf, class_id in zip(bboxes, confs, class_ids):
+            for bbox, score, class_id in zip(bboxes, scores, class_ids):
                 bbox[[0, 2]] *= W
                 bbox[[1, 3]] *= H
                 res = {
                     'image_id': image_meta['image_id'],
                     'category_id': int(class_id),
                     'bbox': bbox.numpy().tolist(),
-                    'score': float(conf),
+                    'score': float(score),
                 }
                 result.append(res)
 

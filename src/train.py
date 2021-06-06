@@ -151,8 +151,8 @@ with SummaryWriter(log_dir=log_dir) as writer:
                 optimizer.step()
             elif epoch % cfg.runtime['eval_interval'] == 0:
                 images = images.detach().cpu()
-                bboxes, confs, class_ids = model.pre_predict(outputs)
-                result += predictor.run(images, image_metas, bboxes, confs, class_ids)
+                bboxes, scores, class_ids = model.pre_predict(outputs)
+                result += predictor.run(images, image_metas, bboxes, scores, class_ids)
 
             for kind in loss.keys():
                 losses[phase][kind] += loss[kind].item() * images.size(0)
