@@ -138,7 +138,6 @@ class SSD(DetectionNet):
         """
         layer_num = 1
         block_num = 1
-        is_bn = False
         features = nn.ModuleDict()
         for m in backbone.features:
             if isinstance(m, nn.Conv2d):
@@ -154,8 +153,7 @@ class SSD(DetectionNet):
                 block.conv.load_state_dict(m.state_dict())
 
             elif isinstance(m, nn.BatchNorm2d):
-                is_bn = True
-                block.bn = m
+                block.bn.load_state_dict(m.state_dict())
 
             elif isinstance(m, nn.ReLU):
                 features[f'conv{layer_num}_{block_num}'] = block
@@ -173,9 +171,6 @@ class SSD(DetectionNet):
         # linear layer -> conv layer (subsample weight)
         features['conv6_1'] = ConvBlock(512, 1024, kernel_size=3, padding=6, dilation=6)
         features['conv7_1'] = ConvBlock(1024, 1024, kernel_size=1)
-        if is_bn:
-            features['conv6_1'].bn = nn.BatchNorm2d(1024)
-            features['conv7_1'].bn = nn.BatchNorm2d(1024)
 
         bc = backbone.classifier
         state_dict = {
@@ -239,6 +234,7 @@ class SSD(DetectionNet):
         """
         out_locs, out_confs = outputs
         device = out_locs.device
+        loss = loss_loc = loss_conf = 0
 
         # [Step 1]
         #   target を作成する
@@ -269,9 +265,7 @@ class SSD(DetectionNet):
             bboxes = bboxes[matched_bbox_ids]
             locs = self._calc_delta(bboxes, dboxes)
             labels = labels[matched_bbox_ids]
-            ls = labels[best_dbox_ids]
             labels[max_ious.less(iou_thresh)] = 0  # 0 が背景クラス. Positive Class は 1 ~
-            labels[best_dbox_ids] = ls
 
             target_locs[i] = locs
             target_labels[i] = labels
@@ -292,17 +286,18 @@ class SSD(DetectionNet):
         neg_mask = loss_neg_rank < 3 * pos_mask.sum(dim=1, keepdims=True)
 
         N = pos_mask.sum()
-        # [Step 3]
-        #   Positive に対して、 Localization Loss を計算する
-        loss_loc = F.smooth_l1_loss(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
+        if N > 0:
+            # [Step 3]
+            #   Positive に対して、 Localization Loss を計算する
+            loss_loc = F.smooth_l1_loss(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
 
-        # [Step 4]
-        #   Positive & Negative に対して、Confidence Loss を計算する
-        loss_conf = F.cross_entropy(out_confs[pos_mask + neg_mask], target_labels[pos_mask + neg_mask], reduction='sum') / N
+            # [Step 4]
+            #   Positive & Negative に対して、Confidence Loss を計算する
+            loss_conf = F.cross_entropy(out_confs[pos_mask + neg_mask], target_labels[pos_mask + neg_mask], reduction='sum') / N
 
-        # [Step 5]
-        #   損失の和を計算する
-        loss = loss_conf + alpha * loss_loc
+            # [Step 5]
+            #   損失の和を計算する
+            loss = loss_conf + alpha * loss_loc
 
         return {
             'loss': loss,
