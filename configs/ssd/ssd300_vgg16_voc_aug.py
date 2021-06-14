@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-__data = 'voc07'
+__data = 'voc12'
 __input_size = 300
 __version = 'ssd300_vgg16_voc_aug'
 
@@ -60,7 +60,7 @@ runtime = dict(
     epochs=100,
     out_dir=__out_dir,
     resume=False,
-    eval_interval=10
+    eval_interval=1
 )
 
 # 予測・評価
