@@ -6,22 +6,28 @@ from torchvision.ops import box_iou, box_convert
 from models.base import DetectionNet
 
 
-class ConvBlock(nn.Module):
-    def __init__(self, in_channels=None, out_channels=None, kernel_size=None, stride=1, padding=0, is_bn=True, dilation=1, args=None):
-        super(ConvBlock, self).__init__()
-        if args is not None:
-            self.conv = args.get('conv')
-            self.bn = args.get('bn', None)
-            self.act = args.get('act')
-        else:
-            self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation)
-            self.bn = nn.BatchNorm2d(out_channels) if is_bn else None
-            self.act = nn.ReLU(inplace=True)
+class ConvRelu(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1):
+        super(ConvRelu, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation)
+        self.act = nn.ReLU(inplace=True)
 
     def forward(self, x):
         x = self.conv(x)
-        if self.bn:
-            x = self.bn(x)
+        out = self.act(x)
+        return out
+
+
+class ConvBNRelu(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1):
+        super(ConvBNRelu, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation)
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.act = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.bn(x)
         out = self.act(x)
         return out
 
@@ -46,48 +52,48 @@ class L2Norm(nn.Module):
 
 
 class SSD(DetectionNet):
-    def __init__(self, num_classes: int, backborn: nn.Module):
+    def __init__(self, num_classes: int, backbone: nn.Module):
         super(SSD, self).__init__()
         self.nc = num_classes + 1  # add background class
 
-        self.features = self._trace_backborn(backborn)
+        if any(isinstance(m, nn.BatchNorm2d) for m in backbone.features):
+            ConvBlock = ConvBNRelu
+        else:
+            ConvBlock = ConvRelu
 
+        self.features = self._build_features(backbone, ConvBlock)
         self.extras = nn.ModuleDict([
-            ('conv8_1', ConvBlock(1024, 256, kernel_size=1, is_bn=False)),
-            ('conv8_2', ConvBlock(256, 512, kernel_size=3, stride=2, padding=1, is_bn=False)),
+            ('conv8_1', ConvBlock(1024, 256, kernel_size=1)),
+            ('conv8_2', ConvBlock(256, 512, kernel_size=3, stride=2, padding=1)),
 
-            ('conv9_1', ConvBlock(512, 128, kernel_size=1, is_bn=False)),
-            ('conv9_2', ConvBlock(128, 256, kernel_size=3, stride=2, padding=1, is_bn=False)),
+            ('conv9_1', ConvBlock(512, 128, kernel_size=1)),
+            ('conv9_2', ConvBlock(128, 256, kernel_size=3, stride=2, padding=1)),
 
-            ('conv10_1', ConvBlock(256, 128, kernel_size=1, is_bn=False)),
-            ('conv10_2', ConvBlock(128, 256, kernel_size=3, is_bn=False)),
+            ('conv10_1', ConvBlock(256, 128, kernel_size=1)),
+            ('conv10_2', ConvBlock(128, 256, kernel_size=3)),
 
-            ('conv11_1', ConvBlock(256, 128, kernel_size=1, is_bn=False)),
-            ('conv11_2', ConvBlock(128, 256, kernel_size=3, is_bn=False)),
+            ('conv11_1', ConvBlock(256, 128, kernel_size=1)),
+            ('conv11_2', ConvBlock(128, 256, kernel_size=3)),
         ])
 
+        self.l2norm = L2Norm(512)
+
         self.localizers = nn.ModuleDict({
-            'conv4_3': nn.Sequential(
-                L2Norm(n_channels=512),
-                nn.Conv2d(in_channels=512, out_channels=4 * 4, kernel_size=3, padding=1)
-            ),
-            'conv7_1': nn.Conv2d(in_channels=1024, out_channels=6 * 4, kernel_size=3, padding=1),
-            'conv8_2': nn.Conv2d(in_channels=512, out_channels=6 * 4, kernel_size=3, padding=1),
-            'conv9_2': nn.Conv2d(in_channels=256, out_channels=6 * 4, kernel_size=3, padding=1),
-            'conv10_2': nn.Conv2d(in_channels=256, out_channels=4 * 4, kernel_size=3, padding=1),
-            'conv11_2': nn.Conv2d(in_channels=256, out_channels=4 * 4, kernel_size=3, padding=1),
+            'conv4_3': nn.Conv2d(512, 4 * 4, kernel_size=3, padding=1),
+            'conv7_1': nn.Conv2d(1024, 6 * 4, kernel_size=3, padding=1),
+            'conv8_2': nn.Conv2d(512, 6 * 4, kernel_size=3, padding=1),
+            'conv9_2': nn.Conv2d(256, 6 * 4, kernel_size=3, padding=1),
+            'conv10_2': nn.Conv2d(256, 4 * 4, kernel_size=3, padding=1),
+            'conv11_2': nn.Conv2d(256, 4 * 4, kernel_size=3, padding=1),
         })
 
         self.classifiers = nn.ModuleDict({
-            'conv4_3': nn.Sequential(
-                L2Norm(n_channels=512),
-                nn.Conv2d(in_channels=512, out_channels=4 * self.nc, kernel_size=3, padding=1)
-            ),
-            'conv7_1': nn.Conv2d(in_channels=1024, out_channels=6 * self.nc, kernel_size=3, padding=1),
-            'conv8_2': nn.Conv2d(in_channels=512, out_channels=6 * self.nc, kernel_size=3, padding=1),
-            'conv9_2': nn.Conv2d(in_channels=256, out_channels=6 * self.nc, kernel_size=3, padding=1),
-            'conv10_2': nn.Conv2d(in_channels=256, out_channels=4 * self.nc, kernel_size=3, padding=1),
-            'conv11_2': nn.Conv2d(in_channels=256, out_channels=4 * self.nc, kernel_size=3, padding=1),
+            'conv4_3': nn.Conv2d(512, 4 * self.nc, kernel_size=3, padding=1),
+            'conv7_1': nn.Conv2d(1024, 6 * self.nc, kernel_size=3, padding=1),
+            'conv8_2': nn.Conv2d(512, 6 * self.nc, kernel_size=3, padding=1),
+            'conv9_2': nn.Conv2d(256, 6 * self.nc, kernel_size=3, padding=1),
+            'conv10_2': nn.Conv2d(256, 4 * self.nc, kernel_size=3, padding=1),
+            'conv11_2': nn.Conv2d(256, 4 * self.nc, kernel_size=3, padding=1),
         })
 
         self.dboxes = self._get_default_boxes()
@@ -95,73 +101,90 @@ class SSD(DetectionNet):
         self.init_weights(blocks=[self.extras, self.localizers, self.classifiers])
 
     def forward(self, x):
-        batch_size = x.size(0)
+        B = x.size(0)
         res = {}
         for name, m in list(self.features.items()) + list(self.extras.items()):
             x = m(x)
             if name in self.localizers:
-                res[name] = x
+                if name == 'conv4_3':
+                    res[name] = self.l2norm(x)
+                else:
+                    res[name] = x
 
         out_locs = []
         out_confs = []
         for name in self.localizers:
             out_locs.append(
                 self.localizers[name](res[name]).permute(0, 2, 3, 1).contiguous(
-                ).view(batch_size, -1, 4)
+                ).view(B, -1, 4)
             )
             out_confs.append(
                 self.classifiers[name](res[name]).permute(0, 2, 3, 1).contiguous(
-                ).view(batch_size, -1, self.nc)
+                ).view(B, -1, self.nc)
             )
 
         out_locs, out_confs = torch.cat(out_locs, dim=1), torch.cat(out_confs, dim=1)
         return out_locs, out_confs
 
-    def _trace_backborn(self, vgg: nn.Module) -> nn.ModuleDict:
-        """ torchvision の VGG16 モデルの特徴抽出層を ConvBlock にトレースする
+    def _build_features(self, backbone: nn.Module, ConvBlock: nn.Module) -> nn.ModuleDict:
+        """ 特徴抽出層を作成
 
         Args:
-            vgg (nn.Sequential): vgg16 or vgg16_bn
+            backbone (nn.Module): vgg16 or vgg16_bn
+            ConvBlock (nn.Module): conv block
 
         Returns:
             nn.ModuleDict: ConvBlock の集合. conv1_1 ~ conv5_3 + new pool5 + conv6_1, conv7_1
         """
-        for m in vgg.features:
-            if isinstance(m, nn.MaxPool2d):
-                m.ceil_mode = True
-
-        layer = block = 1
-
+        layer_num = 1
+        block_num = 1
+        is_bn = False
         features = nn.ModuleDict()
-        args = {}
-        for m in vgg.features[:-1]:
+        for m in backbone.features:
             if isinstance(m, nn.Conv2d):
-                args['conv'] = m
-            elif isinstance(m, nn.BatchNorm2d):
-                args['bn'] = m
-            elif isinstance(m, nn.ReLU):
-                args['act'] = m
-                features[f'conv{layer}_{block}'] = ConvBlock(args=args)
-                block += 1
-            elif isinstance(m, nn.MaxPool2d):
-                features[f'pool{layer}'] = m
-                layer += 1
-                block = 1
+                block = ConvBlock(
+                    m.in_channels,
+                    m.out_channels,
+                    m.kernel_size,
+                    stride=m.stride,
+                    padding=m.padding,
+                    dilation=m.dilation
+                )
 
-        # change pool5 from 2 x 2 - s2 to 3 x 3 - s1
-        features['pool5'] = nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
+                block.conv.load_state_dict(m.state_dict())
+
+            elif isinstance(m, nn.BatchNorm2d):
+                is_bn = True
+                block.bn = m
+
+            elif isinstance(m, nn.ReLU):
+                features[f'conv{layer_num}_{block_num}'] = block
+                block_num += 1
+
+            elif isinstance(m, nn.MaxPool2d):
+                if layer_num < 5:
+                    m.ceil_mode = True
+                    features[f'pool{layer_num}'] = m
+                else:
+                    features[f'pool{layer_num}'] = nn.MaxPool2d(kernel_size=3, stride=1, padding=1, ceil_mode=True)
+                layer_num += 1
+                block_num = 1
 
         # linear layer -> conv layer (subsample weight)
-        features['conv6_1'] = ConvBlock(512, 1024, kernel_size=3, padding=6, dilation=6, is_bn=False)
-        features['conv7_1'] = ConvBlock(1024, 1024, kernel_size=1, is_bn=False)
+        features['conv6_1'] = ConvBlock(512, 1024, kernel_size=3, padding=6, dilation=6)
+        features['conv7_1'] = ConvBlock(1024, 1024, kernel_size=1)
+        if is_bn:
+            features['conv6_1'].bn = nn.BatchNorm2d(1024)
+            features['conv7_1'].bn = nn.BatchNorm2d(1024)
 
-        vgg_c = vgg.classifier
+        bc = backbone.classifier
         state_dict = {
-            'conv6_1.conv.weight': vgg_c[0].weight.reshape(4096, 512, 7, 7)[::4, :, ::3, ::3],
-            'conv6_1.conv.bias': vgg_c[0].bias[::4],
-            'conv7_1.conv.weight': vgg_c[3].weight.reshape(4096, 4096, 1, 1)[::4, ::4],
-            'conv7_1.conv.bias':  vgg_c[3].bias[::4]
+            'conv6_1.conv.weight': bc[0].weight.reshape(4096, 512, 7, 7)[::4, :, ::3, ::3],
+            'conv6_1.conv.bias': bc[0].bias[::4],
+            'conv7_1.conv.weight': bc[3].weight.reshape(4096, 4096, 1, 1)[::4, ::4],
+            'conv7_1.conv.bias':  bc[3].bias[::4]
         }
+
         features.load_state_dict(state_dict, strict=False)
 
         return features
@@ -191,7 +214,7 @@ class SSD(DetectionNet):
                         h = s_(k) * pow(1 / a, 0.5)
                     dboxes.append([cx, cy, w, h])
 
-        dboxes = torch.tensor(dboxes)
+        dboxes = torch.tensor(dboxes).clamp(min=0, max=1)
         return dboxes
 
     def loss(self, outputs: tuple, gt_bboxes: list, gt_labels: list, iou_thresh: float = 0.5, alpha: float = 1.0) -> dict:
@@ -216,7 +239,6 @@ class SSD(DetectionNet):
         """
         out_locs, out_confs = outputs
         device = out_locs.device
-        loss = loss_loc = loss_conf = 0
 
         # [Step 1]
         #   target を作成する
@@ -241,8 +263,8 @@ class SSD(DetectionNet):
             max_ious, matched_bbox_ids = ious.max(dim=1)
 
             # 各 BBox に対し最大 IoU を取る Default Box を選ぶ -> その BBox に割り当てる
-            matched_bbox_ids[best_dbox_ids] = torch.arange(bboxes.size(0))
-            max_ious[best_dbox_ids] = best_ious
+            matched_bbox_ids[best_dbox_ids] = torch.arange(len(best_dbox_ids))
+            max_ious[best_dbox_ids] = iou_thresh
 
             bboxes = bboxes[matched_bbox_ids]
             locs = self._calc_delta(bboxes, dboxes)
@@ -270,18 +292,17 @@ class SSD(DetectionNet):
         neg_mask = loss_neg_rank < 3 * pos_mask.sum(dim=1, keepdims=True)
 
         N = pos_mask.sum()
-        if N > 0:
-            # [Step 3]
-            #   Positive に対して、 Localization Loss を計算する
-            loss_loc = F.smooth_l1_loss(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
+        # [Step 3]
+        #   Positive に対して、 Localization Loss を計算する
+        loss_loc = F.smooth_l1_loss(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
 
-            # [Step 4]
-            #   Positive & Negative に対して、Confidence Loss を計算する
-            loss_conf = F.cross_entropy(out_confs[pos_mask + neg_mask], target_labels[pos_mask + neg_mask], reduction='sum') / N
+        # [Step 4]
+        #   Positive & Negative に対して、Confidence Loss を計算する
+        loss_conf = F.cross_entropy(out_confs[pos_mask + neg_mask], target_labels[pos_mask + neg_mask], reduction='sum') / N
 
-            # [Step 5]
-            #   損失の和を計算する
-            loss = loss_conf + alpha * loss_loc
+        # [Step 5]
+        #   損失の和を計算する
+        loss = loss_conf + alpha * loss_loc
 
         return {
             'loss': loss,
@@ -329,12 +350,11 @@ class SSD(DetectionNet):
         bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1).contiguous()
         return bboxes
 
-    def pre_predict(self, outputs: tuple, conf_thresh: float = 0.1) -> tuple:
+    def pre_predict(self, outputs: tuple) -> tuple:
         """ モデルの出力結果を予測データに変換する
 
         Args:
             outputs (tuple): モデルの出力. (予測オフセット, 予測信頼度)
-            conf_thresh (float): 信頼度の閾値. Defaults to 0.4.
 
         Returns:
             tuple: (予測BBox, 予測信頼度, 予測クラス)
@@ -355,7 +375,7 @@ class SSD(DetectionNet):
 
         for locs, confs in zip(out_locs, out_confs):
             scores, class_ids = confs.max(dim=-1)
-            pos_ids = ((class_ids != 0) * (scores >= conf_thresh)).nonzero().reshape(-1)  # 0 is background class
+            pos_ids = class_ids.nonzero().reshape(-1)  # 0 is background class
             scores, class_ids = scores[pos_ids], class_ids[pos_ids]
             bboxes = self._calc_coord(locs[pos_ids], self.dboxes[pos_ids])
             bboxes = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy').clamp(0, 1)
@@ -369,12 +389,22 @@ class SSD(DetectionNet):
 
 if __name__ == '__main__':
     import torch
-    from torchvision.models import vgg16_bn
+    from torchvision.models import vgg16
     x = torch.rand(2, 3, 300, 300)
 
-    backborn = vgg16_bn(pretrained=True)
-    model = SSD(num_classes=20, backborn=backborn)
-    print(model)
+    backbone = vgg16(pretrained=True)
+    model = SSD(num_classes=20, backbone=backbone)
+    for name, m in model.features.items():
+        if isinstance(m, ConvRelu):
+            print(m.conv)
+            print(m.act)
+        else:
+            print(m)
+
+    print(model.extras)
+    print(model.localizers)
+    print(model.classifiers)
+
     outputs = model(x)
     print(outputs[0].shape, outputs[1].shape)
 
@@ -386,13 +416,13 @@ if __name__ == '__main__':
 
     print(model.loss(outputs, gt_bboxes, gt_labels))
 
-    # from PIL import Image, ImageDraw
-    # from tqdm import tqdm
-    # images = []
-    # for cx, cy, w, h in tqdm(model.dboxes * 300):
-    #     image = Image.fromarray(torch.zeros((300, 300, 3)).numpy().astype('uint8'))
-    #     draw = ImageDraw.Draw(image)
-    #     draw.rectangle((int(cx - w/2), int(cy - h/2), int(cx + w/2), int(cy + h/2)), outline=(255, 255, 255), width=2)
-    #     images.append(image.copy())
-    # images[0].save('./demo/dboxes.gif', save_all=True, append_images=images[1:])
-    # images[0].save('./demo/dboxes_fast.gif', save_all=True, append_images=images[::12])
+    from PIL import Image, ImageDraw
+    from tqdm import tqdm
+    images = []
+    for cx, cy, w, h in tqdm(model.dboxes * 300):
+        image = Image.fromarray(torch.zeros((300, 300, 3)).numpy().astype('uint8'))
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((int(cx - w/2), int(cy - h/2), int(cx + w/2), int(cy + h/2)), outline=(255, 255, 255), width=2)
+        images.append(image.copy())
+    images[0].save('./demo/dboxes.gif', save_all=True, append_images=images[1:])
+    images[0].save('./demo/dboxes_fast.gif', save_all=True, append_images=images[::12])

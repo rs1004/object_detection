@@ -117,14 +117,14 @@ if __name__ == '__main__':
         torch=[
             dict(type='ToTensor'),
             dict(type='Normalize', mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            dict(type='Dropout', p=(0.0, 0.1))
+            dict(type='Dropout', p=(0.0, 0.05))
         ]
     )
     ds = DetectionDataset('/home/sato/work/object_detection/data/voc07', pipeline)
 
     images = []
     for _ in range(40):
-        image, image_meta, bboxes, labels = ds.__getitem__(17)
+        image, image_meta, bboxes, labels = ds.__getitem__(13)
         image = Image.fromarray((image.permute(1, 2, 0) * 255).numpy().astype('uint8'))
         draw = ImageDraw.Draw(image)
         for (cx, cy, w, h), label in zip(bboxes, labels):

@@ -30,7 +30,7 @@ data = dict(
         torch=[
             dict(type='ToTensor'),
             dict(type='Normalize', mean=__mean, std=__std),
-            dict(type='Dropout', p=(0.0, 0.1))
+            dict(type='Dropout', p=(0.0, 0.05))
         ]
     ),
     val_pipeline=dict(
@@ -54,7 +54,7 @@ train_conditions = [
     dict(keys=['.'])
 ]
 optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
-scheduler = dict(type='MultiStepLR', milestones=[100], gamma=0.1)
+scheduler = dict(type='MultiStepLR', milestones=[70, 90], gamma=0.1)
 runtime = dict(
     batch_size=32,
     epochs=100,

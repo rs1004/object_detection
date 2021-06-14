@@ -1,6 +1,6 @@
 import torch
 import seaborn as sns
-from torchvision.ops import box_convert, nms
+from torchvision.ops import box_convert, batched_nms
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 
@@ -53,7 +53,7 @@ class Predictor:
         for image, image_meta, bboxes, scores, class_ids in zip(images, image_metas, pred_bboxes, pred_scores, pred_class_ids):
 
             # 重複の除去（non-maximum supression）
-            keep = nms(bboxes, scores, iou_threshold=self.iou_thresh)
+            keep = batched_nms(bboxes, scores, class_ids, iou_threshold=self.iou_thresh)
             bboxes = box_convert(bboxes[keep], in_fmt='xyxy', out_fmt='xywh')
             scores = scores[keep]
             class_ids = class_ids[keep]
