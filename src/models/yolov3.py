@@ -8,11 +8,11 @@ from models.base import DetectionNet
 
 
 class YoloV3(DetectionNet):
-    def __init__(self, num_classes: int, backborn: nn.Module):
+    def __init__(self, num_classes: int, backbone: nn.Module):
         super(YoloV3, self).__init__()
         self.nc = num_classes
 
-        self.backborn = backborn.features
+        self.backbone = backbone.features
 
         self.neck = nn.ModuleDict([
             ('conv6_1', ConvBlock(1024, 512, kernel_size=1, act='leaky')),
@@ -62,7 +62,7 @@ class YoloV3(DetectionNet):
 
         srcs = dict.fromkeys(self.concat_keys)
         res = dict.fromkeys(self.yolo_head.keys())
-        for name, m in self.backborn.items():
+        for name, m in self.backbone.items():
             x = m(x)
             if name in srcs:
                 srcs[name] = x
@@ -297,9 +297,9 @@ if __name__ == '__main__':
     from torchsummary import summary
     from models.darknet import Darknet53
 
-    backborn = Darknet53()
+    backbone = Darknet53()
 
-    model = YoloV3(10, backborn)
+    model = YoloV3(10, backbone)
     summary(model, (3, 416, 416))
     x = torch.rand(2, 3, 416, 416)
     out_locs, out_objs, out_confs = model(x)

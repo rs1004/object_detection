@@ -39,29 +39,29 @@ class Head(nn.Module):
 
 
 class RetinaNet(DetectionNet):
-    def __init__(self, num_classes: int, backborn: nn.Module):
+    def __init__(self, num_classes: int, backbone: nn.Module):
         super(RetinaNet, self).__init__()
 
         self.nc = num_classes + 1  # add background class
 
         fpn_in_channels = [
-            backborn.layer2[-1].conv3.out_channels,
-            backborn.layer3[-1].conv3.out_channels,
-            backborn.layer4[-1].conv3.out_channels
+            backbone.layer2[-1].conv3.out_channels,
+            backbone.layer3[-1].conv3.out_channels,
+            backbone.layer4[-1].conv3.out_channels
         ]
         fpn_out_channels = 256
 
         self.c1 = nn.Sequential(
-            backborn.conv1,
-            backborn.bn1,
-            backborn.relu,
-            backborn.maxpool
+            backbone.conv1,
+            backbone.bn1,
+            backbone.relu,
+            backbone.maxpool
         )
 
-        self.c2 = backborn.layer1
-        self.c3 = backborn.layer2
-        self.c4 = backborn.layer3
-        self.c5 = backborn.layer4
+        self.c2 = backbone.layer1
+        self.c3 = backbone.layer2
+        self.c4 = backbone.layer3
+        self.c5 = backbone.layer4
 
         self.p3 = UpAdd(fpn_in_channels[0], fpn_out_channels)
         self.p4 = UpAdd(fpn_in_channels[1], fpn_out_channels)
@@ -290,8 +290,8 @@ if __name__ == '__main__':
     size = 416
     x = torch.rand(2, 3, size, size)
 
-    backborn = resnet50()
-    model = RetinaNet(num_classes=20, backborn=backborn)
+    backbone = resnet50()
+    model = RetinaNet(num_classes=20, backbone=backbone)
     outputs = model(x)
     print(outputs[0].shape, outputs[1].shape)
     print(len(model.pboxes))

@@ -8,11 +8,11 @@ from models.base import DetectionNet
 
 
 class SSD2(DetectionNet):
-    def __init__(self, num_classes: int, backborn: nn.Module):
+    def __init__(self, num_classes: int, backbone: nn.Module):
         super(SSD2, self).__init__()
         self.nc = num_classes + 1  # add background class
 
-        self.features = self._trace_features(backborn)
+        self.features = self._trace_features(backbone)
 
         self.extras = nn.ModuleDict([
             ('conv6_1', ConvBlock(2048, 512, kernel_size=1)),
@@ -87,17 +87,17 @@ class SSD2(DetectionNet):
         out_locs, out_confs = torch.cat(out_locs, dim=1), torch.cat(out_confs, dim=1)
         return out_locs, out_confs
 
-    def _trace_features(self, backborn: nn.Sequential) -> nn.ModuleDict:
+    def _trace_features(self, backbone: nn.Sequential) -> nn.ModuleDict:
         """ torchvision の ResNeXt モデルの特徴抽出層を ModuleDict 化する
 
         Args:
-            backborn (nn.Sequential): feature layer of ResNeXt
+            backbone (nn.Sequential): feature layer of ResNeXt
 
         Returns:
             nn.ModuleDict: ResNeXt (conv1 ~ layer4)
         """
         features = nn.ModuleDict()
-        for name, m in backborn.named_children():
+        for name, m in backbone.named_children():
             if name == 'avgpool':
                 break
             features[name] = m
@@ -286,8 +286,8 @@ if __name__ == '__main__':
     from torchvision.models import resnext50_32x4d
     x = torch.rand(2, 3, 512, 512)
 
-    backborn = resnext50_32x4d()
-    model = SSD2(num_classes=20, backborn=backborn)
+    backbone = resnext50_32x4d()
+    model = SSD2(num_classes=20, backbone=backbone)
     outputs = model(x)
     print(outputs[0].shape, outputs[1].shape)
     print(len(model.dboxes))

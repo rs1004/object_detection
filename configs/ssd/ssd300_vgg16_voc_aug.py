@@ -46,7 +46,7 @@ data = dict(
 )
 
 # モデル
-model = dict(type='ssd', num_classes=20, backborn='vgg16', backborn_weight=None)
+model = dict(type='ssd', num_classes=20, backbone='vgg16', backbone_weight=None)
 
 # 学習
 train_conditions = [

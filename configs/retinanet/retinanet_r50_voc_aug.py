@@ -43,7 +43,7 @@ data = dict(
 )
 
 # モデル
-model = dict(type='retinanet', num_classes=20, backborn='resnet50', backborn_weight=None)
+model = dict(type='retinanet', num_classes=20, backbone='resnet50', backbone_weight=None)
 
 # 学習
 train_conditions = [

@@ -10,14 +10,14 @@ MODELS = {
 }
 
 
-def Model(type: str, num_classes: int, backborn: str, backborn_weight: str = None):
-    m = eval(backborn)
-    if backborn_weight:
-        backborn = m(pretrained=False)
-        backborn.load_state_dict(torch.load(backborn_weight), strict=False)
+def Model(type: str, num_classes: int, backbone: str, backbone_weight: str = None):
+    m = eval(backbone)
+    if backbone_weight:
+        backbone = m(pretrained=False)
+        backbone.load_state_dict(torch.load(backbone_weight), strict=False)
     else:
-        backborn = m(pretrained=True)
+        backbone = m(pretrained=True)
 
-    model = MODELS[type](num_classes=num_classes, backborn=backborn)
+    model = MODELS[type](num_classes=num_classes, backbone=backbone)
 
     return model
