@@ -65,13 +65,10 @@ class SSD(DetectionNet):
         self.extras = nn.ModuleDict([
             ('conv8_1', ConvBlock(1024, 256, kernel_size=1)),
             ('conv8_2', ConvBlock(256, 512, kernel_size=3, stride=2, padding=1)),
-
             ('conv9_1', ConvBlock(512, 128, kernel_size=1)),
             ('conv9_2', ConvBlock(128, 256, kernel_size=3, stride=2, padding=1)),
-
             ('conv10_1', ConvBlock(256, 128, kernel_size=1)),
             ('conv10_2', ConvBlock(128, 256, kernel_size=3)),
-
             ('conv11_1', ConvBlock(256, 128, kernel_size=1)),
             ('conv11_2', ConvBlock(128, 256, kernel_size=3)),
         ])
@@ -345,11 +342,13 @@ class SSD(DetectionNet):
         bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1).contiguous()
         return bboxes
 
-    def pre_predict(self, outputs: tuple) -> tuple:
+    def pre_predict(self, outputs: tuple, conf_thresh: float = 0.01, top_k: int = 200) -> tuple:
         """ モデルの出力結果を予測データに変換する
 
         Args:
             outputs (tuple): モデルの出力. (予測オフセット, 予測信頼度)
+            conf_thresh (float): 信頼度の閾値
+            top_k (int): 検出数
 
         Returns:
             tuple: (予測BBox, 予測信頼度, 予測クラス)
@@ -369,15 +368,16 @@ class SSD(DetectionNet):
         pred_class_ids = []
 
         for locs, confs in zip(out_locs, out_confs):
-            scores, class_ids = confs.max(dim=-1)
-            pos_ids = class_ids.nonzero().reshape(-1)  # 0 is background class
-            scores, class_ids = scores[pos_ids], class_ids[pos_ids]
-            bboxes = self._calc_coord(locs[pos_ids], self.dboxes[pos_ids])
-            bboxes = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy').clamp(0, 1)
+            for class_id in range(1, confs.size(1)):  # 0 is background class
+                pos_mask = (confs[:, class_id] > conf_thresh) * (confs[:, class_id].argsort(descending=True).argsort() <= top_k)
+                scores = confs[pos_mask, class_id]
+                class_ids = torch.full_like(scores, class_id, dtype=torch.long)
+                bboxes = self._calc_coord(locs[pos_mask], self.dboxes[pos_mask])
+                bboxes = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy').clamp(0, 1)
 
-            pred_bboxes.append(bboxes)
-            pred_scores.append(scores)
-            pred_class_ids.append(class_ids)
+                pred_bboxes.append(bboxes)
+                pred_scores.append(scores)
+                pred_class_ids.append(class_ids)
 
         return pred_bboxes, pred_scores, pred_class_ids
 
@@ -389,16 +389,7 @@ if __name__ == '__main__':
 
     backbone = vgg16(pretrained=True)
     model = SSD(num_classes=20, backbone=backbone)
-    for name, m in model.features.items():
-        if isinstance(m, ConvRelu):
-            print(m.conv)
-            print(m.act)
-        else:
-            print(m)
-
-    print(model.extras)
-    print(model.localizers)
-    print(model.classifiers)
+    print(model)
 
     outputs = model(x)
     print(outputs[0].shape, outputs[1].shape)
@@ -410,14 +401,3 @@ if __name__ == '__main__':
     gt_labels = [torch.randint(0, 20, (5,)) for _ in range(4)]
 
     print(model.loss(outputs, gt_bboxes, gt_labels))
-
-    from PIL import Image, ImageDraw
-    from tqdm import tqdm
-    images = []
-    for cx, cy, w, h in tqdm(model.dboxes * 300):
-        image = Image.fromarray(torch.zeros((300, 300, 3)).numpy().astype('uint8'))
-        draw = ImageDraw.Draw(image)
-        draw.rectangle((int(cx - w/2), int(cy - h/2), int(cx + w/2), int(cy + h/2)), outline=(255, 255, 255), width=2)
-        images.append(image.copy())
-    images[0].save('./demo/dboxes.gif', save_all=True, append_images=images[1:])
-    images[0].save('./demo/dboxes_fast.gif', save_all=True, append_images=images[::12])
