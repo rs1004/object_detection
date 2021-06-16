@@ -54,13 +54,13 @@ train_conditions = [
     dict(keys=['.'])
 ]
 optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
-scheduler = dict(type='MultiStepLR', gamma=0.1, milestones=[70, 90])
+scheduler = dict(type='MultiStepLR', gamma=0.1, milestones=[85, 95])
 runtime = dict(
     batch_size=32,
     epochs=100,
     out_dir=__out_dir,
     resume=False,
-    eval_interval=1
+    eval_interval=10
 )
 
 # 予測・評価
