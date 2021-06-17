@@ -373,7 +373,7 @@ class SSD(DetectionNet):
             class_ids = []
 
             for class_id in range(1, confs.size(1)):  # 0 is background class
-                pos_mask = (confs[:, class_id] > conf_thresh) * (confs[:, class_id].argsort(descending=True).argsort() <= top_k)
+                pos_mask = (confs[:, class_id] > conf_thresh) * (confs[:, class_id].argsort(descending=True).argsort() < top_k)
                 scores_ = confs[pos_mask, class_id]
                 class_ids_ = torch.full_like(scores_, class_id, dtype=torch.long)
                 bboxes_ = self._calc_coord(locs[pos_mask], self.dboxes[pos_mask])

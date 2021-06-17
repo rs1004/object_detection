@@ -35,12 +35,11 @@ class Predictor:
             colors = [tuple([int(i * 255) for i in c]) for c in sns.color_palette('hls', n_colors=len(classes))]
             self.palette = dict(zip(classes.keys(), colors))
 
-    def run(self, images: torch.Tensor, image_metas: list, pred_bboxes: torch.Tensor, pred_scores: torch.Tensor, pred_class_ids: torch.Tensor) -> list:
+    def run(self, image_metas: list, pred_bboxes: torch.Tensor, pred_scores: torch.Tensor, pred_class_ids: torch.Tensor) -> list:
         """ 予測結果から条件を満たすものを抽出し、結果の辞書のリストを作成
             予測結果 -> 信頼度でフィルタ -> NMS でフィルタ -> 最終予測結果
 
         Args:
-            images (torch.Tensor): 画像データ [N, 3, H, W]
             image_metas (list): 画像メタデータ
             pred_bboxes (torch.Tensor): 予測 BBox [N, num_preds, 4] (coord fmt: [xmin, ymin, xmax, ymax])
             pred_scores (torch.Tensor): 予測信頼度 [N, num_preds]
@@ -50,7 +49,7 @@ class Predictor:
             list: 最終予測結果
         """
         result = []
-        for image, image_meta, bboxes, scores, class_ids in zip(images, image_metas, pred_bboxes, pred_scores, pred_class_ids):
+        for image_meta, bboxes, scores, class_ids in zip(image_metas, pred_bboxes, pred_scores, pred_class_ids):
 
             # 重複の除去（non-maximum supression）
             keep = batched_nms(bboxes, scores, class_ids, iou_threshold=self.iou_thresh)
@@ -62,21 +61,27 @@ class Predictor:
             for bbox, score, class_id in zip(bboxes, scores, class_ids):
                 bbox[[0, 2]] *= W
                 bbox[[1, 3]] *= H
+                x, y, w, h = bbox
                 res = {
                     'image_id': image_meta['image_id'],
                     'category_id': class_id.item(),
-                    'bbox': bbox.numpy().tolist(),
+                    'bbox': [
+                        x.item(),
+                        y.item(),
+                        w.item(),
+                        h.item()
+                    ],
                     'score': score.item(),
                 }
                 result.append(res)
 
-            if self.out_dir:
-                mean = torch.tensor(image_meta['norm_mean']).reshape(3, 1, 1)
-                std = torch.tensor(image_meta['norm_std']).reshape(3, 1, 1)
-                image = image * std + mean
-                image = self._to_pil_image(image, size=(W, H))
-                image = self._draw_bbox(image, result)
-                self._save(image, image_meta['image_id'])
+            # if self.out_dir:
+            #     mean = torch.tensor(image_meta['norm_mean']).reshape(3, 1, 1)
+            #     std = torch.tensor(image_meta['norm_std']).reshape(3, 1, 1)
+            #     image = image * std + mean
+            #     image = self._to_pil_image(image, size=(W, H))
+            #     image = self._draw_bbox(image, result)
+            #     self._save(image, image_meta['image_id'])
 
         return result
 
