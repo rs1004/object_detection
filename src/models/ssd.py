@@ -368,16 +368,24 @@ class SSD(DetectionNet):
         pred_class_ids = []
 
         for locs, confs in zip(out_locs, out_confs):
+            bboxes = []
+            scores = []
+            class_ids = []
+
             for class_id in range(1, confs.size(1)):  # 0 is background class
                 pos_mask = (confs[:, class_id] > conf_thresh) * (confs[:, class_id].argsort(descending=True).argsort() <= top_k)
-                scores = confs[pos_mask, class_id]
-                class_ids = torch.full_like(scores, class_id, dtype=torch.long)
-                bboxes = self._calc_coord(locs[pos_mask], self.dboxes[pos_mask])
-                bboxes = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy').clamp(0, 1)
+                scores_ = confs[pos_mask, class_id]
+                class_ids_ = torch.full_like(scores_, class_id, dtype=torch.long)
+                bboxes_ = self._calc_coord(locs[pos_mask], self.dboxes[pos_mask])
+                bboxes_ = box_convert(bboxes_, in_fmt='cxcywh', out_fmt='xyxy').clamp(0, 1)
 
-                pred_bboxes.append(bboxes)
-                pred_scores.append(scores)
-                pred_class_ids.append(class_ids)
+                bboxes.append(bboxes_)
+                scores.append(scores_)
+                class_ids.append(class_ids_)
+
+            pred_bboxes.append(torch.cat(bboxes))
+            pred_scores.append(torch.cat(scores))
+            pred_class_ids.append(torch.cat(class_ids))
 
         return pred_bboxes, pred_scores, pred_class_ids
 

@@ -64,9 +64,9 @@ class Predictor:
                 bbox[[1, 3]] *= H
                 res = {
                     'image_id': image_meta['image_id'],
-                    'category_id': int(class_id),
+                    'category_id': class_id.item(),
                     'bbox': bbox.numpy().tolist(),
-                    'score': float(score),
+                    'score': score.item(),
                 }
                 result.append(res)
 
