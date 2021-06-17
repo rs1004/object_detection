@@ -342,7 +342,7 @@ class SSD(DetectionNet):
         bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1).contiguous()
         return bboxes
 
-    def pre_predict(self, outputs: tuple, conf_thresh: float = 0.01, top_k: int = 200) -> tuple:
+    def pre_predict(self, outputs: tuple, conf_thresh: float = 0.1, top_k: int = 200) -> tuple:
         """ モデルの出力結果を予測データに変換する
 
         Args:
