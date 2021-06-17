@@ -377,7 +377,7 @@ class SSD(DetectionNet):
                 scores_ = confs[pos_mask, class_id]
                 class_ids_ = torch.full_like(scores_, class_id, dtype=torch.long)
                 bboxes_ = self._calc_coord(locs[pos_mask], self.dboxes[pos_mask])
-                bboxes_ = box_convert(bboxes_, in_fmt='cxcywh', out_fmt='xyxy').clamp(0, 1)
+                bboxes_ = box_convert(bboxes_, in_fmt='cxcywh', out_fmt='xyxy')
 
                 bboxes.append(bboxes_)
                 scores.append(scores_)
