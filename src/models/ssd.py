@@ -194,7 +194,7 @@ class SSD(DetectionNet):
         cfg = [[38, 4], [19, 6], [10, 6], [5, 6], [3, 4], [1, 4]]
 
         for k, (f_k, num_aspects) in enumerate(cfg, start=1):
-            aspects = [1, 2, 1 / 2, 'add'] if num_aspects == 4 else [1, 2, 3, 1 / 2, 1 / 3, 'add']
+            aspects = [1, 'add', 2, 1 / 2] if num_aspects == 4 else [1, 'add', 2, 1 / 2, 3, 1 / 3]
             for i, j in product(range(f_k), repeat=2):
                 cx = (j + 0.5) / f_k
                 cy = (i + 0.5) / f_k

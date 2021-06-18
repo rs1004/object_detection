@@ -146,7 +146,7 @@ with SummaryWriter(log_dir=log_dir) as writer:
             outputs = model(images)
             loss = criterion(outputs, gt_bboxes, gt_labels)
 
-            if phase == 'train' and loss['loss'] > 0:
+            if phase == 'train':
                 loss['loss'].backward()
                 optimizer.step()
             elif epoch % cfg.runtime['eval_interval'] == 0:

@@ -30,7 +30,7 @@ data = dict(
         torch=[
             dict(type='ToTensor'),
             dict(type='Normalize', mean=__mean, std=__std),
-            # dict(type='Dropout', p=(0.0, 0.05))
+            dict(type='Dropout', p=(0.0, 0.05))
         ]
     ),
     val_pipeline=dict(
@@ -50,7 +50,7 @@ model = dict(type='ssd', num_classes=20, backbone='vgg16', backbone_weight=None)
 
 # 学習
 train_conditions = [
-    # dict(keys=['bn', 'bias', 'l2norm'], weight_decay=0.0),
+    dict(keys=['bn', 'bias', 'l2norm'], weight_decay=0.0),
     dict(keys=['.'])
 ]
 optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
