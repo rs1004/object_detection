@@ -40,6 +40,7 @@ cfg = Config(args.config_path)
 # 実行準備
 log_dir = cfg.runtime['out_dir'] + '/logs'
 weights_dir = cfg.runtime['out_dir'] + '/weights'
+eval_dir = cfg.runtime['out_dir'] + '/test'
 initial_epoch = 1
 if cfg.runtime['resume']:
     for log_path in Path(log_dir).glob('**/events.out.*'):
@@ -48,7 +49,7 @@ if cfg.runtime['resume']:
         if 'loss/train' in ea.Tags()['scalars']:
             initial_epoch = max(event.step for event in ea.Scalars('loss/train')) + 1
 else:
-    for d in [log_dir, weights_dir]:
+    for d in [log_dir, weights_dir, eval_dir]:
         rmtree(d, ignore_errors=True)
 
 for d in [log_dir, weights_dir]:

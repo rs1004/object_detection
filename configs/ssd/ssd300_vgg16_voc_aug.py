@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-__data = 'voc12'
+__data = 'voc07+12'
 __input_size = 300
 __version = 'ssd300_vgg16_voc_aug'
 
