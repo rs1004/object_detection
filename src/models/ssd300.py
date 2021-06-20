@@ -51,9 +51,9 @@ class L2Norm(nn.Module):
         return out
 
 
-class SSD(DetectionNet):
+class SSD300(DetectionNet):
     def __init__(self, num_classes: int, backbone: nn.Module):
-        super(SSD, self).__init__()
+        super(SSD300, self).__init__()
         self.nc = num_classes + 1  # add background class
 
         if any(isinstance(m, nn.BatchNorm2d) for m in backbone.features):
@@ -396,7 +396,7 @@ if __name__ == '__main__':
     x = torch.rand(2, 3, 300, 300)
 
     backbone = vgg16(pretrained=True)
-    model = SSD(num_classes=20, backbone=backbone)
+    model = SSD300(num_classes=20, backbone=backbone)
     print(model)
 
     outputs = model(x)

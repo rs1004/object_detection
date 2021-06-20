@@ -1,11 +1,11 @@
-from .ssd import SSD
+from .ssd300 import SSD300
 from .retinanet import RetinaNet
 from torchvision.models import *  # noqa
 import torch
 
 
 MODELS = {
-    'ssd': SSD,
+    'ssd300': SSD300,
     'retinanet': RetinaNet
 }
 
