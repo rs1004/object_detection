@@ -406,6 +406,6 @@ if __name__ == '__main__':
     out_confs = torch.rand(4, 8732, 21)
     outputs = (out_locs, out_confs)
     gt_bboxes = [torch.rand(5, 4) for _ in range(4)]
-    gt_labels = [torch.randint(0, 20, (5,)) for _ in range(4)]
+    gt_labels = [torch.randint(0, 21, (5,)) for _ in range(4)]
 
     print(model.loss(outputs, gt_bboxes, gt_labels))
