@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-__data = 'voc'
+__data = 'voc07+12'
 __input_size = 416
 __version = 'yolov3_voc_aug'
 
@@ -13,30 +13,34 @@ else:
     __out_dir = '/home/sato/work/object_detection/result/' + __version
 
 # データ
-__mean = [0.485, 0.456, 0.406]
-__std = [0.229, 0.224, 0.225]
+__mean = [0., 0., 0.]
+__std = [1., 1., 1.]
 data = dict(
     data_dir=__data_dir,
     bbox_fmt='xywh',
     train_pipeline=dict(
         albu=[
-            dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
-            dict(type='ChannelShuffle'),
-            dict(type='ShiftScaleRotate', shift_limit=0, rotate_limit=0, scale_limit=(-0.75, 0.0), border_mode=0, value=tuple(int(v * 255) for v in __mean)),
-            dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.35),
+            dict(type='ToFloat32'),
+            dict(type='PhotoMetricDistortion', brightness_delta=32, contrast_range=(0.5, 1.5), saturation_range=(0.5, 1.5), hue_delta=18),
+            dict(type='Expand', mean=tuple(v * 255 for v in __mean), ratio_range=(1, 4)),
+            dict(type='MinIoURandomCrop'),
+            dict(type='Resize', height=__input_size, width=__input_size),
             dict(type='HorizontalFlip'),
         ],
         torch=[
             dict(type='ToTensor'),
+            dict(type='Normalize', mean=__mean, std=__std),
             dict(type='Dropout', p=(0.0, 0.05))
         ]
     ),
     val_pipeline=dict(
         albu=[
+            dict(type='ToFloat32'),
             dict(type='Resize', height=__input_size, width=__input_size)
         ],
         torch=[
-            dict(type='ToTensor')
+            dict(type='ToTensor'),
+            dict(type='Normalize', mean=__mean, std=__std)
         ]
     )
 )
@@ -49,8 +53,8 @@ train_conditions = [
     dict(keys=['bn', 'bias'], weight_decay=0.0),
     dict(keys=['.'])
 ]
-optimizer = dict(type='SGD', lr=0.0026, momentum=0.9, weight_decay=0.0005)
-scheduler = dict(type='ExponentialLRWarmUpRestarts', gamma=0.98, eta_min=0.0001, T_up=10)
+optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
+scheduler = dict(type='MultiStepLR', gamma=0.1, milestones=[70, 90])
 runtime = dict(
     batch_size=32,
     epochs=100,

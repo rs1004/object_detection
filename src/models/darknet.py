@@ -2,22 +2,34 @@ import torch
 import torch.nn as nn
 import numpy as np
 import urllib
-from models.layers import ConvBlock
 from functools import partial
 from pathlib import Path
+
+
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1):
+        super(ConvBlock, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation)
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.act = nn.LeakyReLU(negative_slope=0.01, inplace=True)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.bn(x)
+        out = self.act(x)
+        return out
 
 
 class DarkResidualBlock(nn.Module):
     def __init__(self, in_channels, mid_channels, out_channels):
         super(DarkResidualBlock, self).__init__()
-        self.layer1 = ConvBlock(in_channels, mid_channels, kernel_size=1, act='leaky')
-        self.layer2 = ConvBlock(mid_channels, out_channels, kernel_size=3, padding=1, act='leaky')
+        self.layer1 = ConvBlock(in_channels, mid_channels, kernel_size=1)
+        self.layer2 = ConvBlock(mid_channels, out_channels, kernel_size=3, padding=1)
 
     def forward(self, x):
         res = x
         out = self.layer2(self.layer1(x))
         out += res
-
         return out
 
 
@@ -25,15 +37,15 @@ class Darknet53(nn.Module):
     def __init__(self, pretrained=True):
         super(Darknet53, self).__init__()
         self.features = nn.ModuleDict([
-            ('conv1_1', ConvBlock(3, 32, kernel_size=3, padding=1, act='leaky')),
-            ('conv1_2', ConvBlock(32, 64, kernel_size=3, stride=2, padding=1, act='leaky')),
+            ('conv1_1', ConvBlock(3, 32, kernel_size=3, padding=1)),
+            ('conv1_2', ConvBlock(32, 64, kernel_size=3, stride=2, padding=1)),
 
             ('darkres2_1', DarkResidualBlock(64, 32, 64)),
-            ('conv2_1', ConvBlock(64, 128, kernel_size=3, stride=2, padding=1, act='leaky')),
+            ('conv2_1', ConvBlock(64, 128, kernel_size=3, stride=2, padding=1)),
 
             ('darkres3_1', DarkResidualBlock(128, 64, 128)),
             ('darkres3_2', DarkResidualBlock(128, 64, 128)),
-            ('conv3_1', ConvBlock(128, 256, kernel_size=3, stride=2, padding=1, act='leaky')),
+            ('conv3_1', ConvBlock(128, 256, kernel_size=3, stride=2, padding=1)),
 
             ('darkres4_1', DarkResidualBlock(256, 128, 256)),
             ('darkres4_2', DarkResidualBlock(256, 128, 256)),
@@ -43,7 +55,7 @@ class Darknet53(nn.Module):
             ('darkres4_6', DarkResidualBlock(256, 128, 256)),
             ('darkres4_7', DarkResidualBlock(256, 128, 256)),
             ('darkres4_8', DarkResidualBlock(256, 128, 256)),
-            ('conv4_1', ConvBlock(256, 512, kernel_size=3, stride=2, padding=1, act='leaky')),
+            ('conv4_1', ConvBlock(256, 512, kernel_size=3, stride=2, padding=1)),
 
             ('darkres5_1', DarkResidualBlock(512, 256, 512)),
             ('darkres5_2', DarkResidualBlock(512, 256, 512)),
@@ -53,7 +65,7 @@ class Darknet53(nn.Module):
             ('darkres5_6', DarkResidualBlock(512, 256, 512)),
             ('darkres5_7', DarkResidualBlock(512, 256, 512)),
             ('darkres5_8', DarkResidualBlock(512, 256, 512)),
-            ('conv5_1', ConvBlock(512, 1024, kernel_size=3, stride=2, padding=1, act='leaky')),
+            ('conv5_1', ConvBlock(512, 1024, kernel_size=3, stride=2, padding=1)),
 
             ('darkres6_1', DarkResidualBlock(1024, 512, 1024)),
             ('darkres6_2', DarkResidualBlock(1024, 512, 1024)),
@@ -72,7 +84,8 @@ class Darknet53(nn.Module):
                 if isinstance(m, nn.Conv2d):
                     # He の初期化
                     # [memo] sigmoid, tanh を使う場合はXavierの初期値, Relu を使用する場合は He の初期値を使用する
-                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                    nn.init.kaiming_normal_(m.weight.data)
+                    nn.init.constant_(m.bias, 0.0)
 
     def _load(self):
         save_path = torch.hub.get_dir() + '/checkpoints/darknet53.pth'
