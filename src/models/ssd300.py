@@ -231,7 +231,6 @@ class SSD300(DetectionNet):
         """
         out_locs, out_confs = outputs
         device = out_locs.device
-        loss = loss_loc = loss_conf = 0
 
         # [Step 1]
         #   target を作成する
@@ -283,18 +282,17 @@ class SSD300(DetectionNet):
         neg_mask = loss_neg_rank < 3 * pos_mask.sum(dim=1, keepdims=True)
 
         N = pos_mask.sum()
-        if N > 0:
-            # [Step 3]
-            #   Positive に対して、 Localization Loss を計算する
-            loss_loc = F.smooth_l1_loss(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
+        # [Step 3]
+        #   Positive に対して、 Localization Loss を計算する
+        loss_loc = F.smooth_l1_loss(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
 
-            # [Step 4]
-            #   Positive & Negative に対して、Confidence Loss を計算する
-            loss_conf = F.cross_entropy(out_confs[pos_mask + neg_mask], target_labels[pos_mask + neg_mask], reduction='sum') / N
+        # [Step 4]
+        #   Positive & Negative に対して、Confidence Loss を計算する
+        loss_conf = F.cross_entropy(out_confs[pos_mask + neg_mask], target_labels[pos_mask + neg_mask], reduction='sum') / N
 
-            # [Step 5]
-            #   損失の和を計算する
-            loss = loss_conf + alpha * loss_loc
+        # [Step 5]
+        #   損失の和を計算する
+        loss = loss_conf + alpha * loss_loc
 
         return {
             'loss': loss,
@@ -342,7 +340,7 @@ class SSD300(DetectionNet):
         bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1).contiguous()
         return bboxes
 
-    def pre_predict(self, outputs: tuple, conf_thresh: float = 0.1, top_k: int = 200) -> tuple:
+    def pre_predict(self, outputs: tuple, conf_thresh: float = 0.01, top_k: int = 200) -> tuple:
         """ モデルの出力結果を予測データに変換する
 
         Args:

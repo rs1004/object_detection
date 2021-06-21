@@ -202,18 +202,17 @@ class RetinaNet(DetectionNet):
         neg_mask = target_labels == 0
 
         N = pos_mask.sum()
-        if N > 0:
-            # [Step 3]
-            #   Positive に対して、 Localization Loss を計算する
-            loss_loc = F.smooth_l1_loss(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
+        # [Step 3]
+        #   Positive に対して、 Localization Loss を計算する
+        loss_loc = F.smooth_l1_loss(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
 
-            # [Step 4]
-            #   Positive & Negative に対して、Confidence Loss を計算する
-            loss_conf = focal_loss(out_confs[pos_mask + neg_mask], target_labels[pos_mask + neg_mask], reduction='sum') / N
+        # [Step 4]
+        #   Positive & Negative に対して、Confidence Loss を計算する
+        loss_conf = focal_loss(out_confs[pos_mask + neg_mask], target_labels[pos_mask + neg_mask], reduction='sum') / N
 
-            # [Step 5]
-            #   損失の和を計算する
-            loss = loss_conf + loss_loc
+        # [Step 5]
+        #   損失の和を計算する
+        loss = loss_conf + loss_loc
 
         return {
             'loss': loss,

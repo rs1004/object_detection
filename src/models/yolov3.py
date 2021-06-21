@@ -146,7 +146,6 @@ class YoloV3(DetectionNet):
         """
         out_locs, out_objs, out_confs = outputs
         device = out_locs.device
-        loss = loss_loc = loss_conf = loss_obj = 0
 
         # [Step 1]
         #   target を作成する
@@ -196,39 +195,38 @@ class YoloV3(DetectionNet):
         neg_mask = target_labels == 0
 
         N = pos_mask.sum()
-        if N > 0:
-            # [Step 2]
-            #   Positive に対して、 Localization Loss を計算する
-            loss_loc = (
-                F.mse_loss(
-                    out_locs[pos_mask][..., :2].sigmoid(),
-                    target_locs[pos_mask][..., :2],
-                    reduction='sum'
-                ) + F.mse_loss(
-                    out_locs[pos_mask][..., 2:],
-                    target_locs[pos_mask][..., 2:],
-                    reduction='sum')
-            ) / N
-
-            # [Step 3]
-            #   Positive に対して、Confidence Loss を計算する
-            loss_conf = F.binary_cross_entropy_with_logits(
-                out_confs[pos_mask],
-                F.one_hot(target_labels[pos_mask] - 1, num_classes=self.nc).float(),
+        # [Step 2]
+        #   Positive に対して、 Localization Loss を計算する
+        loss_loc = (
+            F.mse_loss(
+                out_locs[pos_mask][..., :2].sigmoid(),
+                target_locs[pos_mask][..., :2],
                 reduction='sum'
-            ) / N
+            ) + F.mse_loss(
+                out_locs[pos_mask][..., 2:],
+                target_locs[pos_mask][..., 2:],
+                reduction='sum')
+        ) / N
 
-            # [Step 4]
-            #   Positive & Negative に対して、 Objectness Loss を計算する
-            loss_obj = F.binary_cross_entropy_with_logits(
-                out_objs[pos_mask + neg_mask],
-                pos_mask[pos_mask + neg_mask].float(),
-                reduction='sum'
-            ) / N
+        # [Step 3]
+        #   Positive に対して、Confidence Loss を計算する
+        loss_conf = F.binary_cross_entropy_with_logits(
+            out_confs[pos_mask],
+            F.one_hot(target_labels[pos_mask] - 1, num_classes=self.nc).float(),
+            reduction='sum'
+        ) / N
 
-            # [Step 5]
-            #   損失の和を計算する
-            loss = loss_loc + loss_obj + loss_conf
+        # [Step 4]
+        #   Positive & Negative に対して、 Objectness Loss を計算する
+        loss_obj = F.binary_cross_entropy_with_logits(
+            out_objs[pos_mask + neg_mask],
+            pos_mask[pos_mask + neg_mask].float(),
+            reduction='sum'
+        ) / N
+
+        # [Step 5]
+        #   損失の和を計算する
+        loss = loss_loc + loss_obj + loss_conf
 
         return {
             'loss': loss,
@@ -283,7 +281,7 @@ class YoloV3(DetectionNet):
         bboxes = torch.stack([b_x, b_y, b_w, b_h], dim=1).contiguous()
         return bboxes
 
-    def pre_predict(self, outputs: tuple, conf_thresh: float = 0.1, top_k: int = 200) -> tuple:
+    def pre_predict(self, outputs: tuple, conf_thresh: float = 0.01, top_k: int = 200) -> tuple:
         """ モデルの出力結果を予測データに変換する
 
         Args:
