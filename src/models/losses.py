@@ -9,10 +9,9 @@ def focal_loss(
     gamma: float = 2,
     reduction: str = 'none',
 ):
-    eps = 1e-7
-    yt = F.one_hot(target, num_classes=input.size(-1))
-    pt = F.softmax(input, dim=-1).clamp(eps, 1 - eps)
-    loss = (-alpha * yt * (1 - pt) ** gamma * torch.log(pt)).sum(dim=-1)
+    pt = input.softmax(dim=-1)
+    log_pt = input.log_softmax(dim=-1)
+    loss = F.nll_loss(alpha * (1 - pt).pow(gamma) * log_pt, target, reduction='none')
 
     if reduction == 'mean':
         return loss.mean()

@@ -1,7 +1,8 @@
 from pathlib import Path
 
-__data = 'voc07'
-__input_size = 320
+
+__data = 'voc07+12'
+__input_size = 416
 __version = 'retinanet_r50_voc_aug'
 
 if Path('/content/object_detection').exists():
@@ -19,10 +20,11 @@ data = dict(
     bbox_fmt='cxcywh',
     train_pipeline=dict(
         albu=[
+            dict(type='ToFloat32'),
+            dict(type='PhotoMetricDistortion', brightness_delta=32, contrast_range=(0.5, 1.5), saturation_range=(0.5, 1.5), hue_delta=18),
+            dict(type='Expand', mean=tuple(v * 255 for v in __mean), ratio_range=(1, 4)),
+            dict(type='MinIoURandomCrop'),
             dict(type='Resize', height=__input_size, width=__input_size),
-            dict(type='ColorJitter', brightness=0.125, contrast=0.5, saturation=0.5, hue=0.05),
-            dict(type='ShiftScaleRotate', shift_limit=0, rotate_limit=0, scale_limit=(-0.2, 0), border_mode=0, value=0),
-            dict(type='RandomSizedBBoxSafeCrop', height=__input_size, width=__input_size, erosion_rate=0.20),
             dict(type='HorizontalFlip'),
         ],
         torch=[
@@ -33,6 +35,7 @@ data = dict(
     ),
     val_pipeline=dict(
         albu=[
+            dict(type='ToFloat32'),
             dict(type='Resize', height=__input_size, width=__input_size)
         ],
         torch=[
@@ -50,8 +53,8 @@ train_conditions = [
     dict(keys=['bn', 'bias'], weight_decay=0.0),
     dict(keys=['.'])
 ]
-optimizer = dict(type='SGD', lr=0.0026, momentum=0.9, weight_decay=0.0005)
-scheduler = dict(type='ExponentialLRWarmUpRestarts', gamma=0.97, eta_min=0.0001, T_up=10)
+optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
+scheduler = dict(type='MultiStepLR', gamma=0.1, milestones=[75, 90])
 runtime = dict(
     batch_size=24,
     epochs=100,
