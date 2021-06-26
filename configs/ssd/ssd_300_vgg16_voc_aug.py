@@ -3,7 +3,7 @@ from pathlib import Path
 
 __data = 'voc07+12'
 __input_size = 300
-__version = 'ssd300_vgg16_voc_aug'
+__version = 'ssd_300_vgg16_voc_aug'
 
 if Path('/content/object_detection').exists():
     __data_dir = '/content/object_detection/data/' + __data

@@ -3,7 +3,7 @@ from pathlib import Path
 
 __data = 'voc07+12'
 __input_size = 512
-__version = 'ssd512_vgg16_voc_aug'
+__version = 'ssd_512_vgg16bn_voc_aug'
 
 if Path('/content/object_detection').exists():
     __data_dir = '/content/object_detection/data/' + __data
@@ -46,7 +46,7 @@ data = dict(
 )
 
 # モデル
-model = dict(type='ssd512', num_classes=20, backbone='vgg16', backbone_weight=None)
+model = dict(type='ssd512', num_classes=20, backbone='vgg16_bn', backbone_weight=None)
 
 # 学習
 train_conditions = [
