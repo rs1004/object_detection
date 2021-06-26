@@ -11,11 +11,6 @@ def focal_loss(
 ):
     pt = input.softmax(dim=-1)
     log_pt = input.log_softmax(dim=-1)
-    loss = F.nll_loss(alpha * (1 - pt).pow(gamma) * log_pt, target, reduction='none')
+    loss = F.nll_loss(alpha * (1 - pt).pow(gamma) * log_pt, target, reduction=reduction)
 
-    if reduction == 'mean':
-        return loss.mean()
-    elif reduction == 'sum':
-        return loss.sum()
-    else:
-        return loss
+    return loss
