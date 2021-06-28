@@ -9,8 +9,15 @@ def focal_loss(
     gamma: float = 2,
     reduction: str = 'none',
 ):
-    pt = F.sigmoid(input)
-    log_pt = F.logsigmoid(input)
-    loss = F.nll_loss(alpha * (1 - pt).pow(gamma) * log_pt, target, reduction=reduction)
+    target = F.one_hot(target, num_classes=input.size(-1)).float()
+    pt = torch.where(target == 1, input.sigmoid(), 1 - input.sigmoid())
+    logpt = F.binary_cross_entropy_with_logits(input, target)
+    alpha = torch.where(target == 1, alpha, 1 - alpha)
+    loss = alpha * (1 - pt) ** gamma * logpt
 
-    return loss
+    if reduction == 'sum':
+        return loss.sum()
+    elif reduction == 'mean':
+        return loss.mean()
+    else:
+        return loss
