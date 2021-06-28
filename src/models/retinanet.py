@@ -130,7 +130,7 @@ class RetinaNet(DetectionNet):
                         h = size / f_k * pow(aspect, 0.5)
                         pboxes.append([cx, cy, w, h])
 
-        pboxes = torch.tensor(pboxes)
+        pboxes = torch.tensor(pboxes).clamp(min=0, max=1)
         return pboxes
 
     def loss(self, outputs: tuple, gt_bboxes: list, gt_labels: list, iou_threshs: tuple = (0.4, 0.5)) -> dict:

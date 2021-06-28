@@ -9,8 +9,8 @@ def focal_loss(
     gamma: float = 2,
     reduction: str = 'none',
 ):
-    pt = input.softmax(dim=-1)
-    log_pt = input.log_softmax(dim=-1)
+    pt = F.sigmoid(input)
+    log_pt = F.logsigmoid(input)
     loss = F.nll_loss(alpha * (1 - pt).pow(gamma) * log_pt, target, reduction=reduction)
 
     return loss
