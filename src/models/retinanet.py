@@ -114,20 +114,16 @@ class RetinaNet(DetectionNet):
         Returns:
             torch.Tensor (32526, 4): Prior Box (coord fmt: [cx, cy, w, h])
         """
-        # def s_(k, m=5, s_min=0.07, s_max=0.88):
-        #     return s_min + (s_max - s_min) * (k - 1) / (m - 1)
-
         pboxes = []
 
         for k, f_k in enumerate(f_k_list, start=1):
             for i, j in product(range(f_k), repeat=2):
                 cx = (j + 0.5) / f_k
                 cy = (i + 0.5) / f_k
-                # s_k = s_(k)
-                for aspect in [1, 2, 1 / 2]:
-                    for size in [2 ** 0, 2 ** (1 / 3), 2 ** (2 / 3)]:
-                        w = size / f_k * pow(1 / aspect, 0.5)
-                        h = size / f_k * pow(aspect, 0.5)
+                for aspect in [0.5, 1, 2]:
+                    for scale in [2 ** 0, 2 ** (1 / 3), 2 ** (2 / 3)]:
+                        w = scale / f_k * 4 * pow(1 / aspect, 0.5)
+                        h = scale / f_k * 4 * pow(aspect, 0.5)
                         pboxes.append([cx, cy, w, h])
 
         pboxes = torch.tensor(pboxes).clamp(min=0, max=1)
