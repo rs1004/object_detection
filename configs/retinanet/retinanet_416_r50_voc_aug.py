@@ -56,7 +56,7 @@ train_conditions = [
 optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
 scheduler = dict(type='MultiStepLR', gamma=0.1, milestones=[75, 90])
 runtime = dict(
-    batch_size=24,
+    batch_size=32,
     epochs=100,
     out_dir=__out_dir,
     resume=False,
