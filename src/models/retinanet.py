@@ -122,8 +122,8 @@ class RetinaNet(DetectionNet):
                 cy = (i + 0.5) / f_k
                 for aspect in [0.5, 1, 2]:
                     for scale in [2 ** 0, 2 ** (1 / 3), 2 ** (2 / 3)]:
-                        w = scale / f_k * 4 * pow(1 / aspect, 0.5)
-                        h = scale / f_k * 4 * pow(aspect, 0.5)
+                        w = 4 * scale / f_k * pow(1 / aspect, 0.5)
+                        h = 4 * scale / f_k * pow(aspect, 0.5)
                         pboxes.append([cx, cy, w, h])
 
         pboxes = torch.tensor(pboxes).clamp(min=0, max=1)
@@ -198,14 +198,13 @@ class RetinaNet(DetectionNet):
         neg_mask = target_labels == 0
 
         N = pos_mask.sum()
-        M = neg_mask.sum()
         # [Step 3]
         #   Positive に対して、 Localization Loss を計算する
         loss_loc = F.smooth_l1_loss(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
 
         # [Step 4]
         #   Positive & Negative に対して、Confidence Loss を計算する
-        loss_conf = focal_loss(out_confs[pos_mask + neg_mask], target_labels[pos_mask + neg_mask], reduction='sum') / (N + M)
+        loss_conf = focal_loss(out_confs[pos_mask + neg_mask], target_labels[pos_mask + neg_mask], reduction='sum') / N
 
         # [Step 5]
         #   損失の和を計算する
