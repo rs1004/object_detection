@@ -240,13 +240,13 @@ class SSD300(DetectionNet):
         #   - 最大 IoU が 0.5 未満の場合、Label を 0 に設定する
 
         B, P, C = out_confs.size()
-        target_locs = torch.zeros(B, P, 4)
-        target_labels = torch.zeros(B, P, dtype=torch.long)
+        target_locs = torch.zeros(B, P, 4, device=device)
+        target_labels = torch.zeros(B, P, dtype=torch.long, device=device)
 
-        dboxes = self.dboxes
+        dboxes = self.dboxes.to(device)
         for i in range(B):
-            bboxes = gt_bboxes[i]
-            labels = gt_labels[i]
+            bboxes = gt_bboxes[i].to(device)
+            labels = gt_labels[i].to(device)
 
             bboxes_xyxy = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
             dboxes_xyxy = box_convert(dboxes, in_fmt='cxcywh', out_fmt='xyxy')
@@ -255,7 +255,8 @@ class SSD300(DetectionNet):
             max_ious, matched_bbox_ids = ious.max(dim=1)
 
             # 各 BBox に対し最大 IoU を取る Default Box を選ぶ -> その BBox に割り当てる
-            matched_bbox_ids[best_dbox_ids] = torch.arange(len(best_dbox_ids))
+            for j in range(len(best_dbox_ids)):
+                matched_bbox_ids[best_dbox_ids][j] = j
             max_ious[best_dbox_ids] = iou_thresh
 
             bboxes = bboxes[matched_bbox_ids]
@@ -265,9 +266,6 @@ class SSD300(DetectionNet):
 
             target_locs[i] = locs
             target_labels[i] = labels
-
-        target_locs = target_locs.to(device)
-        target_labels = target_labels.to(device)
 
         # [Step 2]
         #   pos_mask, neg_mask を作成する

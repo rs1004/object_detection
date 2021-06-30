@@ -175,8 +175,8 @@ class RetinaNet(DetectionNet):
             max_ious, matched_bbox_ids = ious.max(dim=1)
 
             # 各 BBox に対し最大 IoU を取る Prior Box を選ぶ -> その BBox に割り当てる
-            for i in range(len(best_pbox_ids)):
-                matched_bbox_ids[best_pbox_ids][i] = i
+            for j in range(len(best_pbox_ids)):
+                matched_bbox_ids[best_pbox_ids][j] = j
             max_ious[best_pbox_ids] = iou_threshs[1]
 
             bboxes = bboxes[matched_bbox_ids]
