@@ -42,7 +42,7 @@ class RetinaNet(DetectionNet):
     def __init__(self, num_classes: int, backbone: nn.Module):
         super(RetinaNet, self).__init__()
 
-        self.nc = num_classes
+        self.nc = num_classes + 1  # add background class
 
         fpn_in_channels = [
             backbone.layer2[-1].conv3.out_channels,
@@ -161,7 +161,7 @@ class RetinaNet(DetectionNet):
 
         B, P, C = out_confs.size()
         target_locs = torch.zeros(B, P, 4)
-        target_labels = torch.zeros(B, P, C)
+        target_labels = torch.zeros(B, P, dtype=torch.long)
 
         pboxes = self.pboxes
         for i in range(B):
@@ -181,9 +181,8 @@ class RetinaNet(DetectionNet):
             bboxes = bboxes[matched_bbox_ids]
             locs = self._calc_delta(bboxes, pboxes)
             labels = labels[matched_bbox_ids]
-            labels = F.one_hot(labels - 1, num_classes=C)  # label は 1~
-            labels[max_ious.less(iou_threshs[1])] = -1  # void. 計算に含めない.
-            labels[max_ious.less(iou_threshs[0])] = 0
+            labels[max_ious.less(iou_threshs[1])] = -1  # void クラス. 計算に含めない.
+            labels[max_ious.less(iou_threshs[0])] = 0  # 0 が背景クラス. Positive Class は 1 ~
 
             target_locs[i] = locs
             target_labels[i] = labels
@@ -193,12 +192,11 @@ class RetinaNet(DetectionNet):
 
         # [Step 2]
         #   pos_mask, neg_mask を作成する
-        #   - pos_mask: Label のいずれかは 1~ のもの
-        #   - neg_mask: Label が全て 0 のもの
+        #   - pos_mask: Label が 0 でないもの
+        #   - neg_mask: Label が 0 のもの
 
-        labels_sum = target_labels.sum(dim=-1)
-        pos_mask = labels_sum > 0
-        neg_mask = labels_sum == 0
+        pos_mask = target_labels > 0
+        neg_mask = target_labels == 0
 
         N = pos_mask.sum()
         # [Step 3]
@@ -274,7 +272,7 @@ class RetinaNet(DetectionNet):
                     - 予測クラス : [N, P]
         """
         out_locs, out_confs = outputs
-        out_confs = out_confs.sigmoid()
+        out_confs = F.softmax(out_confs, dim=-1)
 
         # to CPU
         out_locs = out_locs.detach().cpu()
@@ -289,10 +287,9 @@ class RetinaNet(DetectionNet):
             scores = []
             class_ids = []
 
-            for i in range(confs.size(1)):
-                class_id = i + 1
-                pos_mask = (confs[:, i] > conf_thresh) * (confs[:, i].argsort(descending=True).argsort() < top_k)
-                scores_ = confs[pos_mask, i]
+            for class_id in range(1, confs.size(1)):  # 0 is background class
+                pos_mask = (confs[:, class_id] > conf_thresh) * (confs[:, class_id].argsort(descending=True).argsort() < top_k)
+                scores_ = confs[pos_mask, class_id]
                 class_ids_ = torch.full_like(scores_, class_id, dtype=torch.long)
                 bboxes_ = self._calc_coord(locs[pos_mask], self.pboxes[pos_mask])
                 bboxes_ = box_convert(bboxes_, in_fmt='cxcywh', out_fmt='xyxy')
