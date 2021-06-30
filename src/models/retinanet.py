@@ -42,7 +42,7 @@ class RetinaNet(DetectionNet):
     def __init__(self, num_classes: int, backbone: nn.Module):
         super(RetinaNet, self).__init__()
 
-        self.nc = num_classes + 1  # add background class
+        self.nc = num_classes
 
         fpn_in_channels = [
             backbone.layer2[-1].conv3.out_channels,
@@ -156,11 +156,12 @@ class RetinaNet(DetectionNet):
         #   - Pred を GT に対応させる
         #     - Pred の Default Box との IoU が最大となる BBox, Label
         #     - BBox との IoU が最大となる Default Box -> その BBox に割り当てる
-        #   - 最大 IoU が 0.5 未満の場合、Label を 0 に設定する
+        #   - 最大 IoU が 0.4 未満の場合、Label を 0 に設定する
+        #   - 最大 IoU が 0.5 未満の場合、Label を -1 に設定する (void)
 
         B, P, C = out_confs.size()
         target_locs = torch.zeros(B, P, 4)
-        target_labels = torch.zeros(B, P, dtype=torch.long)
+        target_labels = torch.zeros(B, P, C)
 
         pboxes = self.pboxes
         for i in range(B):
@@ -179,9 +180,9 @@ class RetinaNet(DetectionNet):
 
             bboxes = bboxes[matched_bbox_ids]
             locs = self._calc_delta(bboxes, pboxes)
-            labels = labels[matched_bbox_ids]
-            labels[max_ious.less(iou_threshs[1])] = -1  # void クラス. 計算に含めない.
-            labels[max_ious.less(iou_threshs[0])] = 0  # 0 が背景クラス. Positive Class は 1 ~
+            labels = F.one_hot(labels - 1, num_classes=C)  # label は 1~
+            labels[max_ious.less(iou_threshs[1])] = -1  # void. 計算に含めない.
+            labels[max_ious.less(iou_threshs[0])] = 0
 
             target_locs[i] = locs
             target_labels[i] = labels
@@ -191,11 +192,12 @@ class RetinaNet(DetectionNet):
 
         # [Step 2]
         #   pos_mask, neg_mask を作成する
-        #   - pos_mask: Label が 0 でないもの
-        #   - neg_mask: Label が 0 のもの
+        #   - pos_mask: Label のいずれかは 1~ のもの
+        #   - neg_mask: Label が全て 0 のもの
 
-        pos_mask = target_labels > 0
-        neg_mask = target_labels == 0
+        labels_sum = target_labels.sum(dim=-1)
+        pos_mask = labels_sum > 0
+        neg_mask = labels_sum == 0
 
         N = pos_mask.sum()
         # [Step 3]
