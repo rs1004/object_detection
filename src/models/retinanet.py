@@ -160,13 +160,13 @@ class RetinaNet(DetectionNet):
         #   - 最大 IoU が 0.5 未満の場合、Label を -1 に設定する (void)
 
         B, P, C = out_confs.size()
-        target_locs = torch.zeros(B, P, 4)
-        target_labels = torch.zeros(B, P, dtype=torch.long)
+        target_locs = torch.zeros(B, P, 4, device=device)
+        target_labels = torch.zeros(B, P, dtype=torch.long, device=device)
 
-        pboxes = self.pboxes
+        pboxes = self.pboxes.to(device)
         for i in range(B):
-            bboxes = gt_bboxes[i]
-            labels = gt_labels[i]
+            bboxes = gt_bboxes[i].to(device)
+            labels = gt_labels[i].to(device)
 
             bboxes_xyxy = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
             pboxes_xyxy = box_convert(pboxes, in_fmt='cxcywh', out_fmt='xyxy')
@@ -175,7 +175,8 @@ class RetinaNet(DetectionNet):
             max_ious, matched_bbox_ids = ious.max(dim=1)
 
             # 各 BBox に対し最大 IoU を取る Prior Box を選ぶ -> その BBox に割り当てる
-            matched_bbox_ids[best_pbox_ids] = torch.arange(len(best_pbox_ids))
+            for i in range(len(best_pbox_ids)):
+                matched_bbox_ids[best_pbox_ids][i] = i
             max_ious[best_pbox_ids] = iou_threshs[1]
 
             bboxes = bboxes[matched_bbox_ids]
@@ -186,9 +187,6 @@ class RetinaNet(DetectionNet):
 
             target_locs[i] = locs
             target_labels[i] = labels
-
-        target_locs = target_locs.to(device)
-        target_labels = target_labels.to(device)
 
         # [Step 2]
         #   pos_mask, neg_mask を作成する
