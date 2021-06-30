@@ -180,6 +180,7 @@ class RetinaNet(DetectionNet):
 
             bboxes = bboxes[matched_bbox_ids]
             locs = self._calc_delta(bboxes, pboxes)
+            labels = labels[matched_bbox_ids]
             labels = F.one_hot(labels - 1, num_classes=C)  # label は 1~
             labels[max_ious.less(iou_threshs[1])] = -1  # void. 計算に含めない.
             labels[max_ious.less(iou_threshs[0])] = 0
@@ -273,7 +274,7 @@ class RetinaNet(DetectionNet):
                     - 予測クラス : [N, P]
         """
         out_locs, out_confs = outputs
-        out_confs = F.softmax(out_confs, dim=-1)
+        out_confs = out_confs.sigmoid()
 
         # to CPU
         out_locs = out_locs.detach().cpu()
@@ -288,9 +289,10 @@ class RetinaNet(DetectionNet):
             scores = []
             class_ids = []
 
-            for class_id in range(1, confs.size(1)):  # 0 is background class
-                pos_mask = (confs[:, class_id] > conf_thresh) * (confs[:, class_id].argsort(descending=True).argsort() < top_k)
-                scores_ = confs[pos_mask, class_id]
+            for i in range(confs.size(1)):
+                class_id = i + 1
+                pos_mask = (confs[:, i] > conf_thresh) * (confs[:, i].argsort(descending=True).argsort() < top_k)
+                scores_ = confs[pos_mask, i]
                 class_ids_ = torch.full_like(scores_, class_id, dtype=torch.long)
                 bboxes_ = self._calc_coord(locs[pos_mask], self.pboxes[pos_mask])
                 bboxes_ = box_convert(bboxes_, in_fmt='cxcywh', out_fmt='xyxy')
