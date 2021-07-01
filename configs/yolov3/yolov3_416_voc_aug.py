@@ -3,7 +3,7 @@ from pathlib import Path
 
 __data = 'voc07+12'
 __input_size = 416
-__version = 'yolov3_voc_aug'
+__version = 'yolov3_416_voc_aug'
 
 if Path('/content/object_detection').exists():
     __data_dir = '/content/object_detection/data/' + __data
@@ -54,9 +54,9 @@ train_conditions = [
     dict(keys=['.'])
 ]
 optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
-scheduler = dict(type='MultiStepLR', gamma=0.1, milestones=[70, 90])
+scheduler = dict(type='MultiStepLRWarmUpRestarts', gamma=0.1, milestones=[75, 90], eta_min=0.0001, T_up=10)
 runtime = dict(
-    batch_size=32,
+    batch_size=24,
     epochs=100,
     out_dir=__out_dir,
     resume=False,

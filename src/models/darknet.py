@@ -29,7 +29,7 @@ class DarkResidualBlock(nn.Module):
     def forward(self, x):
         res = x
         out = self.layer2(self.layer1(x))
-        out += res
+        out = out + res
         return out
 
 

@@ -155,13 +155,13 @@ class YoloV3(DetectionNet):
         #   - 最大 IoU が 0.5 未満の場合、Label を 0 に設定する
 
         B, P, C = out_confs.size()
-        target_locs = torch.zeros(B, P, 4)
-        target_labels = torch.zeros(B, P, dtype=torch.long)
+        target_locs = torch.zeros(B, P, 4, device=device)
+        target_labels = torch.zeros(B, P, dtype=torch.long, device=device)
 
         pboxes, grid_length = self.pboxes.to(device).split(4, dim=1)
         for i in range(B):
-            bboxes = gt_bboxes[i]
-            labels = gt_labels[i]
+            bboxes = gt_bboxes[i].to(device)
+            labels = gt_labels[i].to(device)
 
             is_in_grid = (pboxes[:, [0]] <= bboxes[:, 0]) * (bboxes[:, 0] < pboxes[:, [0]] + grid_length) * \
                 (pboxes[:, [1]] <= bboxes[:, 1]) * (bboxes[:, 1] < pboxes[:, [1]] + grid_length)
@@ -172,7 +172,8 @@ class YoloV3(DetectionNet):
             max_ious, matched_bbox_ids = ious.max(dim=1)
 
             # 各 BBox に対し最大 IoU を取る Prior Box を選ぶ -> その BBox に割り当てる
-            matched_bbox_ids[best_pbox_ids] = torch.arange(len(best_pbox_ids))
+            for j in range(len(best_pbox_ids)):
+                matched_bbox_ids[best_pbox_ids][j] = j
             max_ious[best_pbox_ids] = 1.
 
             bboxes = bboxes[matched_bbox_ids]
@@ -183,9 +184,6 @@ class YoloV3(DetectionNet):
 
             target_locs[i] = locs
             target_labels[i] = labels
-
-        target_locs = target_locs.to(device)
-        target_labels = target_labels.to(device)
 
         # [Step 2]
         #   pos_mask, neg_mask を作成する
