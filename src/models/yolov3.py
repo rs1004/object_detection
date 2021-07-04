@@ -196,8 +196,8 @@ class YoloV3(DetectionNet):
         # [Step 2]
         #   Positive に対して、 Localization Loss を計算する
         loss_loc = (
-            F.mse_loss(
-                out_locs[pos_mask][..., :2].sigmoid(),
+            F.binary_cross_entropy_with_logits(
+                out_locs[pos_mask][..., :2],
                 target_locs[pos_mask][..., :2],
                 reduction='sum'
             ) + F.mse_loss(
@@ -317,7 +317,7 @@ class YoloV3(DetectionNet):
                 pos_mask = (confs[:, class_id] > conf_thresh) * (confs[:, class_id].argsort(descending=True).argsort() < top_k)
                 scores_ = confs[pos_mask, class_id]
                 class_ids_ = torch.full_like(scores_, class_id + 1, dtype=torch.long)
-                bboxes_ = self._calc_coord(locs[pos_mask], self.dboxes[pos_mask])
+                bboxes_ = self._calc_coord(locs[pos_mask], self.pboxes[pos_mask])
                 bboxes_ = box_convert(bboxes_, in_fmt='xywh', out_fmt='xyxy')
 
                 bboxes.append(bboxes_)
