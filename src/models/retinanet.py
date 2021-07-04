@@ -146,8 +146,8 @@ class RetinaNet(DetectionNet):
                 cy = (i + 0.5) / f_k
                 for aspect in [0.5, 1, 2]:
                     for scale in [2 ** 0, 2 ** (1 / 3), 2 ** (2 / 3)]:
-                        w = 4 * scale / f_k * pow(1 / aspect, 0.5)
-                        h = 4 * scale / f_k * pow(aspect, 0.5)
+                        w = 2 * scale / f_k * pow(1 / aspect, 0.5)
+                        h = 2 * scale / f_k * pow(aspect, 0.5)
                         pboxes.append([cx, cy, w, h])
 
         pboxes = torch.tensor(pboxes).clamp(min=0, max=1)
@@ -330,7 +330,7 @@ class RetinaNet(DetectionNet):
 if __name__ == '__main__':
     import torch
     from torchvision.models import resnet50
-    size = 416
+    size = 512
     x = torch.rand(2, 3, size, size)
 
     backbone = resnet50()
@@ -339,8 +339,8 @@ if __name__ == '__main__':
     print(outputs[0].shape, outputs[1].shape)
     print(len(model.pboxes))
 
-    out_locs = torch.rand(4, 32526, 4)
-    out_confs = torch.rand(4, 32526, 21)
+    out_locs = torch.rand(4, 49104, 4)
+    out_confs = torch.rand(4, 49104, 21)
     outputs = (out_locs, out_confs)
     gt_bboxes = [torch.rand(5, 4) for _ in range(4)]
     gt_labels = [torch.randint(0, 20, (5,)) for _ in range(4)]
