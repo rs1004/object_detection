@@ -7,33 +7,42 @@ from models.base import DetectionNet
 from models.losses import focal_loss
 
 
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1):
+        super(ConvBlock, self).__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation)
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.act = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.bn(x)
+        out = self.act(x)
+        return out
+
+
 class UpAdd(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(UpAdd, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, 1)
+        self.conv = ConvBlock(in_channels, out_channels, 1)
+        self.up = nn.UpsamplingNearest2d(scale_factor=2)
 
-    def forward(self, cx, fx):
-        _, _, h, w = cx.size()
+    def forward(self, cx, px):
         cx = self.conv(cx)
-        fx = F.interpolate(fx, size=(h, w), mode='bilinear', align_corners=True)
-        return cx + fx
+        px = self.up(px)
+        return cx + px
 
 
 class Head(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, num_blocks=4):
         super(Head, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1)
-        self.conv4 = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1)
+        self.headc = nn.Sequential(
+            *[ConvBlock(in_channels, in_channels, kernel_size=3, padding=1) for _ in range(num_blocks)]
+        )
         self.outc = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
-        self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        x = self.relu(self.conv1(x))
-        x = self.relu(self.conv2(x))
-        x = self.relu(self.conv3(x))
-        x = self.relu(self.conv4(x))
+        x = self.headc(x)
         out = self.outc(x)
         return out
 
@@ -63,37 +72,52 @@ class RetinaNet(DetectionNet):
         self.c4 = backbone.layer3
         self.c5 = backbone.layer4
 
-        self.p3 = UpAdd(fpn_in_channels[0], fpn_out_channels)
-        self.p4 = UpAdd(fpn_in_channels[1], fpn_out_channels)
-        self.p5 = nn.Conv2d(fpn_in_channels[2], fpn_out_channels, kernel_size=1)
-        self.p6 = nn.Conv2d(fpn_in_channels[2], fpn_out_channels, kernel_size=3, stride=2, padding=1)
-        self.p7 = nn.Sequential(
-            nn.BatchNorm2d(fpn_out_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(fpn_out_channels, fpn_out_channels, kernel_size=3, stride=2, padding=1)
-        )
+        self.p3_1 = UpAdd(fpn_in_channels[0], fpn_out_channels)
+        self.p4_1 = UpAdd(fpn_in_channels[1], fpn_out_channels)
+        self.p5_1 = ConvBlock(fpn_in_channels[2], fpn_out_channels, kernel_size=1)
+        self.p6_1 = ConvBlock(fpn_in_channels[2], fpn_out_channels, kernel_size=3, stride=2, padding=1)
+        self.p7_1 = ConvBlock(fpn_out_channels, fpn_out_channels, kernel_size=3, stride=2, padding=1)
+
+        self.p3_2 = ConvBlock(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
+        self.p4_2 = ConvBlock(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
+        self.p5_2 = ConvBlock(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
+        self.p6_2 = ConvBlock(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
+        self.p7_2 = ConvBlock(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
 
         self.regressor = Head(fpn_out_channels, 9 * 4)
         self.classifier = Head(fpn_out_channels, 9 * self.nc)
 
-        self.init_weights(blocks=[self.p3, self.p4, self.p5, self.p6, self.p7, self.regressor, self.classifier])
+        self.init_weights(blocks=[
+            self.p3_1, self.p4_1, self.p5_1, self.p6_1, self.p7_1,
+            self.p3_2, self.p4_2, self.p5_2, self.p6_2, self.p7_2,
+            self.regressor, self.classifier]
+        )
 
     def forward(self, x):
         batch_size = x.size(0)
 
+        # backbone
         c1 = self.c1(x)
         c2 = self.c2(c1)
         c3 = self.c3(c2)
         c4 = self.c4(c3)
         c5 = self.c5(c4)
 
-        p5 = self.p5(c5)
-        p6 = self.p6(c5)
-        p7 = self.p7(p6)
+        # lateral conv
+        p5 = self.p5_1(c5)
+        p6 = self.p6_1(c5)
+        p7 = self.p7_1(p6)
+        p4 = self.p4_1(c4, p5)
+        p3 = self.p3_1(c3, p4)
 
-        p4 = self.p4(c4, p5)
-        p3 = self.p3(c3, p4)
+        # extract feature
+        p3 = self.p3_2(p3)
+        p4 = self.p4_2(p4)
+        p5 = self.p5_2(p5)
+        p6 = self.p6_2(p6)
+        p7 = self.p7_2(p7)
 
+        # detection head
         out_locs = []
         out_confs = []
         f_k_list = []
