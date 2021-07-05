@@ -60,6 +60,7 @@ class Evaluator:
 
     def run(self, epoch: int):
         out_log_path = Path(self.pred_path).parent / f'eval@{epoch}epc.log'
+        out_log_path.unlink(missing_ok=True)
 
         cocoGt = COCO(self.anno_path)
         cocoDt = cocoGt.loadRes(self.pred_path)

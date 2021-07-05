@@ -1,6 +1,5 @@
 import argparse
 import torch
-from shutil import rmtree
 from pathlib import Path
 from tqdm import tqdm
 
@@ -23,7 +22,6 @@ cfg = Config(args.config_path)
 test_dir = cfg.runtime['out_dir'] + '/test'
 log_dir = cfg.runtime['out_dir'] + '/logs'
 weights_path = cfg.runtime['out_dir'] + '/weights/latest.pth'
-rmtree(test_dir, ignore_errors=True)
 Path(test_dir).mkdir(parents=True, exist_ok=True)
 epoch = '-'
 for log_path in Path(log_dir).glob('**/events.out.*'):
