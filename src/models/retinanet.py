@@ -7,24 +7,10 @@ from models.base import DetectionNet
 from models.losses import focal_loss
 
 
-class ConvBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1):
-        super(ConvBlock, self).__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation)
-        self.bn = nn.BatchNorm2d(out_channels)
-        self.act = nn.ReLU(inplace=True)
-
-    def forward(self, x):
-        x = self.conv(x)
-        x = self.bn(x)
-        out = self.act(x)
-        return out
-
-
 class UpAdd(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(UpAdd, self).__init__()
-        self.conv = ConvBlock(in_channels, out_channels, 1)
+        self.conv = nn.Conv2d(in_channels, out_channels, 1)
         self.up = nn.UpsamplingNearest2d(scale_factor=2)
 
     def forward(self, cx, px):
@@ -36,9 +22,11 @@ class UpAdd(nn.Module):
 class Head(nn.Module):
     def __init__(self, in_channels, out_channels, num_blocks=4):
         super(Head, self).__init__()
-        self.headc = nn.Sequential(
-            *[ConvBlock(in_channels, in_channels, kernel_size=3, padding=1) for _ in range(num_blocks)]
-        )
+        head_list = []
+        for _ in range(num_blocks):
+            head_list.append(nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1))
+            head_list.append(nn.ReLU(inplace=True))
+        self.headc = nn.Sequential(*head_list)
         self.outc = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
 
     def forward(self, x):
@@ -74,23 +62,22 @@ class RetinaNet(DetectionNet):
 
         self.p3_1 = UpAdd(fpn_in_channels[0], fpn_out_channels)
         self.p4_1 = UpAdd(fpn_in_channels[1], fpn_out_channels)
-        self.p5_1 = ConvBlock(fpn_in_channels[2], fpn_out_channels, kernel_size=1)
-        self.p6_1 = ConvBlock(fpn_in_channels[2], fpn_out_channels, kernel_size=3, stride=2, padding=1)
-        self.p7_1 = ConvBlock(fpn_out_channels, fpn_out_channels, kernel_size=3, stride=2, padding=1)
+        self.p5_1 = nn.Conv2d(fpn_in_channels[2], fpn_out_channels, kernel_size=1)
 
-        self.p3_2 = ConvBlock(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
-        self.p4_2 = ConvBlock(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
-        self.p5_2 = ConvBlock(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
-        self.p6_2 = ConvBlock(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
-        self.p7_2 = ConvBlock(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
+        self.p3_2 = nn.Conv2d(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
+        self.p4_2 = nn.Conv2d(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
+        self.p5_2 = nn.Conv2d(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
+        self.p6_1 = nn.Conv2d(fpn_in_channels[2], fpn_out_channels, kernel_size=3, stride=2, padding=1)
+        self.p7_1 = nn.Conv2d(fpn_out_channels, fpn_out_channels, kernel_size=3, stride=2, padding=1)
+
+        self.relu = nn.ReLU(inplace=True)
 
         self.regressor = Head(fpn_out_channels, 9 * 4)
         self.classifier = Head(fpn_out_channels, 9 * self.nc)
 
         self.init_weights(blocks=[
-            self.p3_1, self.p4_1, self.p5_1, self.p6_1, self.p7_1,
-            self.p3_2, self.p4_2, self.p5_2, self.p6_2, self.p7_2,
-            self.regressor, self.classifier]
+            self.p3_1, self.p4_1, self.p5_1, self.p3_2, self.p4_2, self.p5_2,
+            self.p6_1, self.p7_1, self.regressor, self.classifier]
         )
 
     def forward(self, x):
@@ -103,10 +90,8 @@ class RetinaNet(DetectionNet):
         c4 = self.c4(c3)
         c5 = self.c5(c4)
 
-        # lateral conv
+        # connection
         p5 = self.p5_1(c5)
-        p6 = self.p6_1(c5)
-        p7 = self.p7_1(p6)
         p4 = self.p4_1(c4, p5)
         p3 = self.p3_1(c3, p4)
 
@@ -114,8 +99,8 @@ class RetinaNet(DetectionNet):
         p3 = self.p3_2(p3)
         p4 = self.p4_2(p4)
         p5 = self.p5_2(p5)
-        p6 = self.p6_2(p6)
-        p7 = self.p7_2(p7)
+        p6 = self.p6_1(c5)
+        p7 = self.p7_1(self.relu(p6))
 
         # detection head
         out_locs = []
@@ -146,8 +131,8 @@ class RetinaNet(DetectionNet):
                 cy = (i + 0.5) / f_k
                 for aspect in [0.5, 1, 2]:
                     for scale in [2 ** 0, 2 ** (1 / 3), 2 ** (2 / 3)]:
-                        w = 2 * scale / f_k * pow(1 / aspect, 0.5)
-                        h = 2 * scale / f_k * pow(aspect, 0.5)
+                        w = 4 * scale / f_k * pow(1 / aspect, 0.5)
+                        h = 4 * scale / f_k * pow(aspect, 0.5)
                         pboxes.append([cx, cy, w, h])
 
         pboxes = torch.tensor(pboxes).clamp(min=0, max=1)
