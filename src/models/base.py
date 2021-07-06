@@ -21,34 +21,21 @@ class DetectionNet(nn.Module, metaclass=ABCMeta):
                     nn.init.kaiming_normal_(m.weight.data)
                     nn.init.constant_(m.bias, 0.0)
 
-    def get_parameters(self, train_conditions: list) -> list:
+    def get_parameters(self) -> list:
         """ 学習パラメータを取得する
-
-        Args:
-            train_conditions (list): 学習パラメータの振り分けの条件
 
         Returns:
             list: 学習パラメータ一覧
         """
-        for name, param in self.named_parameters():
-            for i in range(len(train_conditions)):
-                if any(k in name for k in train_conditions[i]['keys']):
-                    if train_conditions[i].get('lr', None) == 0:
-                        param.requires_grad = False
-                    else:
-                        if 'params' not in train_conditions[i]:
-                            train_conditions[i]['params'] = []
-                        train_conditions[i]['params'].append(param)
-                    break
+        params_decay = {'params': []}
+        params_no_decay = {'params': [], 'weight_decay': 0.0}
+        for param in self.parameters():
+            if len(param.shape) > 1:
+                params_decay['params'].append(param)
+            else:
+                params_no_decay['params'].append(param)
 
-        params_to_update = []
-        for d in train_conditions:
-            if 'params' not in d:
-                continue
-            d.pop('keys')
-            params_to_update.append(d)
-
-        return params_to_update
+        return [params_decay, params_no_decay]
 
     @abstractmethod
     def forward(self, x: torch.Tensor):

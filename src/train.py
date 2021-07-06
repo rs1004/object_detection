@@ -84,7 +84,7 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
 
 criterion = model.loss
-optimizer = Optimizer(params=model.get_parameters(cfg.train_conditions), cfg=cfg.optimizer)
+optimizer = Optimizer(params=model.get_parameters(), cfg=cfg.optimizer)
 scheduler = Scheduler(optimizer=optimizer, cfg=cfg.scheduler)
 
 # 予測・評価

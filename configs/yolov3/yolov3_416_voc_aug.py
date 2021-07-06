@@ -49,10 +49,6 @@ data = dict(
 model = dict(type='yolov3', num_classes=20, backbone='Darknet53', backbone_weight=None)
 
 # 学習
-train_conditions = [
-    dict(keys=['bn', 'bias'], weight_decay=0.0),
-    dict(keys=['.'])
-]
 optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
 scheduler = dict(type='MultiStepLRWarmUpRestarts', gamma=0.1, milestones=[75, 90], eta_min=0.0001, T_up=10)
 runtime = dict(

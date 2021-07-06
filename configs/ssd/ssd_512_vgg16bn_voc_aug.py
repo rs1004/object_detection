@@ -49,10 +49,6 @@ data = dict(
 model = dict(type='ssd512', num_classes=20, backbone='vgg16_bn', backbone_weight=None)
 
 # 学習
-train_conditions = [
-    dict(keys=['bn', 'bias', 'l2norm'], weight_decay=0.0),
-    dict(keys=['.'])
-]
 optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
 scheduler = dict(type='MultiStepLR', gamma=0.1, milestones=[65, 90])
 runtime = dict(
