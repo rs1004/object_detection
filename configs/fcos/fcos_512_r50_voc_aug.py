@@ -52,7 +52,7 @@ model = dict(type='fcos', num_classes=20, backbone='resnet50', backbone_weight=N
 optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0005)
 scheduler = dict(type='MultiStepLRWarmUpRestarts', gamma=0.1, milestones=[75, 90], eta_min=0.0001, T_up=10)
 runtime = dict(
-    batch_size=2,
+    batch_size=24,
     epochs=100,
     out_dir=__out_dir,
     resume=False,

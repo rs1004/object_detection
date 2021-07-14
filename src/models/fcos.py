@@ -246,7 +246,7 @@ class FCOS(DetectionNet):
 
         # [Step 4]
         #   Positive に対して、 Centerness Loss を計算する
-        loss_centerness = F.binary_cross_entropy_with_logits(out_cents[pos_mask], target_cents[pos_mask], reduction='sum') / N
+        loss_cent = F.binary_cross_entropy_with_logits(out_cents[pos_mask], target_cents[pos_mask], reduction='sum') / N
 
         # [Step 5]
         #   Positive & Negative に対して、Confidence Loss を計算する
@@ -254,12 +254,12 @@ class FCOS(DetectionNet):
 
         # [Step 5]
         #   損失の和を計算する
-        loss = loss_conf + loss_centerness + loss_loc
+        loss = loss_conf + loss_cent + loss_loc
 
         return {
             'loss': loss,
             'loss_loc': loss_loc,
-            'loss_centerness': loss_centerness,
+            'loss_cent': loss_cent,
             'loss_conf': loss_conf
         }
 
@@ -297,7 +297,7 @@ class FCOS(DetectionNet):
         """
         out_locs, out_confs, out_cents = outputs
         out_locs = out_locs.exp()
-        out_confs = (F.softmax(out_confs, dim=-1) * out_cents.sigmoid()).sqrt()
+        out_confs = (F.softmax(out_confs, dim=-1) * out_cents.sigmoid()[..., None]).sqrt()
 
         # to CPU
         out_locs = out_locs.detach().cpu()
