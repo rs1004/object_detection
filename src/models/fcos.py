@@ -191,15 +191,15 @@ class FCOS(DetectionNet):
         #   - 対応する GT が存在しない場合、Label を 0 にする
 
         B, P, C = out_confs.size()
-        target_locs = torch.zeros(B, P, 4, device=device)
-        target_cents = torch.zeros(B, P, device=device)
-        target_labels = torch.zeros(B, P, dtype=torch.long, device=device)
+        target_locs = torch.zeros(B, P, 4)
+        target_cents = torch.zeros(B, P)
+        target_labels = torch.zeros(B, P, dtype=torch.long)
 
-        points = self.points.to(device)
-        regress_ranges = self.regress_ranges.to(device)
+        points = self.points
+        regress_ranges = self.regress_ranges
         for i in range(B):
-            bboxes = gt_bboxes[i].to(device)
-            labels = gt_labels[i].to(device)
+            bboxes = gt_bboxes[i]
+            labels = gt_labels[i]
 
             bboxes_xyxy = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
             areas = (bboxes_xyxy[:, 2] - bboxes_xyxy[:, 0]) * (bboxes_xyxy[:, 3] - bboxes_xyxy[:, 1]).repeat(len(points), 1)
@@ -230,6 +230,10 @@ class FCOS(DetectionNet):
             target_locs[i] = locs
             target_cents[i] = cents
             target_labels[i] = labels
+
+        target_locs = target_locs.to(device)
+        target_cents = target_cents.to(device)
+        target_labels = target_labels.to(device)
 
         # [Step 2]
         #   pos_mask, neg_mask を作成する
