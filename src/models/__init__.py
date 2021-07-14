@@ -3,6 +3,7 @@ from .ssd512 import SSD512
 from .darknet import Darknet53  # noqa
 from .yolov3 import YoloV3
 from .retinanet import RetinaNet
+from .fcos import FCOS
 from torchvision.models import *  # noqa
 import torch
 
@@ -11,7 +12,8 @@ MODELS = {
     'ssd300': SSD300,
     'ssd512': SSD512,
     'yolov3': YoloV3,
-    'retinanet': RetinaNet
+    'retinanet': RetinaNet,
+    'fcos': FCOS
 }
 
 
