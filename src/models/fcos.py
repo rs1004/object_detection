@@ -4,7 +4,17 @@ import torch.nn.functional as F
 from itertools import product
 from torchvision.ops import box_convert
 from models.base import DetectionNet
-from models.losses import focal_loss
+from models.losses import focal_loss, iou_loss_with_distance
+
+
+class Scale(nn.Module):
+    def __init__(self, init=1.0):
+        super().__init__()
+
+        self.scale = nn.Parameter(torch.tensor([init], dtype=torch.float32))
+
+    def forward(self, input):
+        return input * self.scale
 
 
 class UpAdd(nn.Module):
@@ -25,6 +35,7 @@ class Head(nn.Module):
         head_list = []
         for _ in range(num_blocks):
             head_list.append(nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1))
+            head_list.append(nn.GroupNorm(32, in_channels))
             head_list.append(nn.ReLU(inplace=True))
         self.headc = nn.Sequential(*head_list)
         self.outc = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
@@ -75,9 +86,11 @@ class FCOS(DetectionNet):
         self.regressor = Head(fpn_out_channels, 4)
         self.classifier = Head(fpn_out_channels, self.nc)
         self.centerness = nn.Sequential(
-            self.classifier.headc,
+            self.regressor.headc,
             nn.Conv2d(fpn_out_channels, 1, kernel_size=3, padding=1)
         )
+
+        self.scales = nn.ModuleList([Scale(1.0) for _ in range(5)])
 
         self.init_weights(blocks=[
             self.p3_1, self.p4_1, self.p5_1, self.p3_2, self.p4_2, self.p5_2,
@@ -111,9 +124,9 @@ class FCOS(DetectionNet):
         out_confs = []
         out_cents = []
         f_k_list = []
-        for p in [p3, p4, p5, p6, p7]:
+        for i, p in enumerate([p3, p4, p5, p6, p7]):
             f_k_list.append(p.size(-1))
-            out_locs.append(self.regressor(p).permute(0, 2, 3, 1).reshape(batch_size, -1, 4))
+            out_locs.append((self.scales[i](self.regressor(p).permute(0, 2, 3, 1).reshape(batch_size, -1, 4))).exp())
             out_confs.append(self.classifier(p).permute(0, 2, 3, 1).reshape(batch_size, -1, self.nc))
             out_cents.append(self.centerness(p).permute(0, 2, 3, 1).reshape(batch_size, -1))
 
@@ -208,7 +221,7 @@ class FCOS(DetectionNet):
             rays = torch.stack([left, right, top, bottom], dim=-1)
 
             # 条件 1
-            inside_bbox = (left > 0) * (right > 0) * (top > 0) * (bottom > 0)
+            inside_bbox = rays.min(dim=-1).values > 0
             areas[~inside_bbox] = 1
 
             # 条件 2
@@ -218,10 +231,9 @@ class FCOS(DetectionNet):
 
             # 条件 3
             min_areas, matched_bbox_ids = areas.min(dim=1)
-            rays = rays[range(len(points)), matched_bbox_ids]
-            locs = self._calc_delta(rays)
+            locs = rays[range(len(points)), matched_bbox_ids]
             cents = (
-                rays[:, 0:2].min(dim=1).values / rays[:, 0:2].max(dim=1).values * rays[:, 2:4].min(dim=1).values / rays[:, 2:4].max(dim=1).values
+                locs[:, 0:2].min(dim=1).values / locs[:, 0:2].max(dim=1).values * locs[:, 2:4].min(dim=1).values / locs[:, 2:4].max(dim=1).values
             ).sqrt()
             labels = labels[matched_bbox_ids]
             labels[min_areas == 1] = 0  # 0 が背景クラス. Positive Class は 1 ~
@@ -245,7 +257,7 @@ class FCOS(DetectionNet):
         N = pos_mask.sum()
         # [Step 3]
         #   Positive に対して、 Localization Loss を計算する
-        loss_loc = F.smooth_l1_loss(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
+        loss_loc = iou_loss_with_distance(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
 
         # [Step 4]
         #   Positive に対して、 Centerness Loss を計算する
@@ -266,39 +278,20 @@ class FCOS(DetectionNet):
             'loss_conf': loss_conf
         }
 
-    def _calc_delta(self, rays: torch.Tensor, std: float = 0.1) -> torch.Tensor:
-        """ Δg を算出する
-
-        Args:
-            rays (torch.Tensor, [X, 4]): GT Ray
-            std (float, optional): Δd を全データに対して計算して得られる標準偏差.
-
-        Returns:
-            torch.Tensor: [X, 4]
-        """
-        d_l = (1 / std) * rays[:, 0].log()
-        d_r = (1 / std) * rays[:, 1].log()
-        d_t = (1 / std) * rays[:, 2].log()
-        d_b = (1 / std) * rays[:, 3].log()
-
-        dds = torch.stack([d_l, d_r, d_t, d_b], dim=1)
-        return dds
-
-    def _calc_coord(self, locs: torch.Tensor, points: torch.Tensor, std: float = 0.1) -> torch.Tensor:
+    def _calc_coord(self, locs: torch.Tensor, points: torch.Tensor) -> torch.Tensor:
         """ g を算出する
 
         Args:
             locs (torch.Tensor, [X, 4]): Ray Prediction
             points (torch.Tensor, [X, 4]): Points
-            std (float, optional): Δd を全データに対して計算して得られる標準偏差.
 
         Returns:
             torch.Tensor: [X, 4]
         """
-        xmin = points[:, 0] - (std * locs[:, 0]).exp()
-        ymin = points[:, 1] - (std * locs[:, 1]).exp()
-        xmax = points[:, 0] + (std * locs[:, 2]).exp()
-        ymax = points[:, 1] + (std * locs[:, 3]).exp()
+        xmin = points[:, 0] - locs[:, 0]
+        ymin = points[:, 1] - locs[:, 1]
+        xmax = points[:, 0] + locs[:, 2]
+        ymax = points[:, 1] + locs[:, 3]
 
         bboxes = torch.stack([xmin, ymin, xmax, ymax], dim=1)
         return bboxes
@@ -318,7 +311,7 @@ class FCOS(DetectionNet):
                     - 予測クラス : [N, P]
         """
         out_locs, out_confs, out_cents = outputs
-        out_confs = (F.softmax(out_confs, dim=-1) * out_cents.sigmoid()[..., None]).sqrt()
+        out_confs = F.softmax(out_confs, dim=-1) * out_cents.sigmoid()[..., None]
 
         # to CPU
         out_locs = out_locs.detach().cpu()
