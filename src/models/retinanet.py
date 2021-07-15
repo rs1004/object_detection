@@ -242,7 +242,7 @@ class RetinaNet(DetectionNet):
         db_w = (1 / std[1]) * (bboxes[:, 2] / pboxes[:, 2]).log()
         db_h = (1 / std[1]) * (bboxes[:, 3] / pboxes[:, 3]).log()
 
-        dbboxes = torch.stack([db_cx, db_cy, db_w, db_h], dim=1).contiguous()
+        dbboxes = torch.stack([db_cx, db_cy, db_w, db_h], dim=1)
         return dbboxes
 
     def _calc_coord(self, locs: torch.Tensor, pboxes: torch.Tensor, std: list = [0.1, 0.2]) -> torch.Tensor:
@@ -261,7 +261,7 @@ class RetinaNet(DetectionNet):
         b_w = pboxes[:, 2] * (std[1] * locs[:, 2]).exp()
         b_h = pboxes[:, 3] * (std[1] * locs[:, 3]).exp()
 
-        bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1).contiguous()
+        bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1)
         return bboxes
 
     def pre_predict(self, outputs: tuple, conf_thresh: float = 0.01, top_k: int = 200) -> tuple:

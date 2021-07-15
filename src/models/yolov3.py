@@ -91,7 +91,7 @@ class YoloV3(DetectionNet):
         out_objs = []
         out_confs = []
         for name in self.yolo_head:
-            outputs = self.yolo_head[name](res[name]).permute(0, 2, 3, 1).contiguous().view(batch_size, -1, 4 + 1 + self.nc)
+            outputs = self.yolo_head[name](res[name]).permute(0, 2, 3, 1).reshape(batch_size, -1, 4 + 1 + self.nc)
             out_locs.append(
                 outputs[..., 0:4]
             )
@@ -253,7 +253,7 @@ class YoloV3(DetectionNet):
         db_w = (1 / std[1]) * (bboxes[:, 2] / pboxes[:, 2]).log()
         db_h = (1 / std[1]) * (bboxes[:, 3] / pboxes[:, 3]).log()
 
-        dbboxes = torch.stack([db_x, db_y, db_w, db_h], dim=1).contiguous()
+        dbboxes = torch.stack([db_x, db_y, db_w, db_h], dim=1)
         return dbboxes
 
     def _calc_coord(self, locs: torch.Tensor, pboxes: torch.Tensor, grid_length: torch.Tensor,
@@ -276,7 +276,7 @@ class YoloV3(DetectionNet):
         b_w = pboxes[:, 2] * (std[1] * locs[:, 2]).exp()
         b_h = pboxes[:, 3] * (std[1] * locs[:, 3]).exp()
 
-        bboxes = torch.stack([b_x, b_y, b_w, b_h], dim=1).contiguous()
+        bboxes = torch.stack([b_x, b_y, b_w, b_h], dim=1)
         return bboxes
 
     def pre_predict(self, outputs: tuple, conf_thresh: float = 0.01, top_k: int = 200) -> tuple:

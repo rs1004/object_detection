@@ -112,12 +112,10 @@ class SSD300(DetectionNet):
         out_confs = []
         for name in self.localizers:
             out_locs.append(
-                self.localizers[name](res[name]).permute(0, 2, 3, 1).contiguous(
-                ).view(B, -1, 4)
+                self.localizers[name](res[name]).permute(0, 2, 3, 1).reshape(B, -1, 4)
             )
             out_confs.append(
-                self.classifiers[name](res[name]).permute(0, 2, 3, 1).contiguous(
-                ).view(B, -1, self.nc)
+                self.classifiers[name](res[name]).permute(0, 2, 3, 1).reshape(B, -1, self.nc)
             )
 
         out_locs, out_confs = torch.cat(out_locs, dim=1), torch.cat(out_confs, dim=1)
@@ -316,7 +314,7 @@ class SSD300(DetectionNet):
         db_w = (1 / std[1]) * (bboxes[:, 2] / dboxes[:, 2]).log()
         db_h = (1 / std[1]) * (bboxes[:, 3] / dboxes[:, 3]).log()
 
-        dbboxes = torch.stack([db_cx, db_cy, db_w, db_h], dim=1).contiguous()
+        dbboxes = torch.stack([db_cx, db_cy, db_w, db_h], dim=1)
         return dbboxes
 
     def _calc_coord(self, locs: torch.Tensor, dboxes: torch.Tensor, std: list = [0.1, 0.2]) -> torch.Tensor:
@@ -335,7 +333,7 @@ class SSD300(DetectionNet):
         b_w = dboxes[:, 2] * (std[1] * locs[:, 2]).exp()
         b_h = dboxes[:, 3] * (std[1] * locs[:, 3]).exp()
 
-        bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1).contiguous()
+        bboxes = torch.stack([b_cx, b_cy, b_w, b_h], dim=1)
         return bboxes
 
     def pre_predict(self, outputs: tuple, conf_thresh: float = 0.01, top_k: int = 200) -> tuple:

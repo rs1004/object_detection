@@ -4,9 +4,7 @@ import torch.nn.functional as F
 from itertools import product
 from torchvision.ops import box_convert
 from models.base import DetectionNet
-from models.losses import focal_loss, iou_loss_with_distance
-
-INF = 1e8
+from models.losses import focal_loss
 
 
 class UpAdd(nn.Module):
@@ -148,7 +146,7 @@ class FCOS(DetectionNet):
         Returns:
             torch.Tensor (5456, 2): Regress Ranges
         """
-        regress_range_list = [[-1, 0.125], [0.125, 0.25], [0.25, 0.5], [0.5, 1.], [1., INF]]
+        regress_range_list = [[-1, 0.125], [0.125, 0.25], [0.25, 0.5], [0.5, 1.], [1., 1e6]]
 
         regress_ranges = []
         for i in range(len(f_k_list)):
@@ -203,26 +201,27 @@ class FCOS(DetectionNet):
 
             bboxes_xyxy = box_convert(bboxes, in_fmt='cxcywh', out_fmt='xyxy')
             areas = (bboxes_xyxy[:, 2] - bboxes_xyxy[:, 0]) * (bboxes_xyxy[:, 3] - bboxes_xyxy[:, 1]).repeat(len(points), 1)
-            d_left = points[:, [0]] - bboxes_xyxy[:, 0]
-            d_right = bboxes_xyxy[:, 2] - points[:, [0]]
-            d_top = points[:, [1]] - bboxes_xyxy[:, 1]
-            d_bottom = bboxes_xyxy[:, 3] - points[:, [1]]
-            d = torch.stack([d_left, d_right, d_top, d_bottom], dim=-1)
+            left = points[:, [0]] - bboxes_xyxy[:, 0]
+            right = bboxes_xyxy[:, 2] - points[:, [0]]
+            top = points[:, [1]] - bboxes_xyxy[:, 1]
+            bottom = bboxes_xyxy[:, 3] - points[:, [1]]
+            rays = torch.stack([left, right, top, bottom], dim=-1)
 
             # 条件 1
-            inside_bbox = (d_left > 0) * (d_right > 0) * (d_top > 0) * (d_bottom > 0)
+            inside_bbox = (left > 0) * (right > 0) * (top > 0) * (bottom > 0)
             areas[~inside_bbox] = 1
 
             # 条件 2
-            max_d = d.max(dim=-1).values
-            inside_regress_range = (regress_ranges[:, [0]] < max_d) * (max_d < regress_ranges[:, [1]])
+            max_ray = rays.max(dim=-1).values
+            inside_regress_range = (regress_ranges[:, [0]] < max_ray) * (max_ray < regress_ranges[:, [1]])
             areas[~inside_regress_range] = 1
 
             # 条件 3
             min_areas, matched_bbox_ids = areas.min(dim=1)
-            locs = d[range(len(points)), matched_bbox_ids]
+            rays = rays[range(len(points)), matched_bbox_ids]
+            locs = self._calc_delta(rays)
             cents = (
-                locs[:, 0:2].min(dim=1).values / locs[:, 0:2].max(dim=1).values * locs[:, 2:4].min(dim=1).values / locs[:, 2:4].max(dim=1).values
+                rays[:, 0:2].min(dim=1).values / rays[:, 0:2].max(dim=1).values * rays[:, 2:4].min(dim=1).values / rays[:, 2:4].max(dim=1).values
             ).sqrt()
             labels = labels[matched_bbox_ids]
             labels[min_areas == 1] = 0  # 0 が背景クラス. Positive Class は 1 ~
@@ -246,7 +245,7 @@ class FCOS(DetectionNet):
         N = pos_mask.sum()
         # [Step 3]
         #   Positive に対して、 Localization Loss を計算する
-        loss_loc = iou_loss_with_distance(out_locs[pos_mask].exp(), target_locs[pos_mask], reduction='sum') / N
+        loss_loc = F.smooth_l1_loss(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
 
         # [Step 4]
         #   Positive に対して、 Centerness Loss を計算する
@@ -267,22 +266,41 @@ class FCOS(DetectionNet):
             'loss_conf': loss_conf
         }
 
-    def _calc_coord(self, locs: torch.Tensor, points: torch.Tensor) -> torch.Tensor:
+    def _calc_delta(self, rays: torch.Tensor, std: float = 0.1) -> torch.Tensor:
+        """ Δg を算出する
+
+        Args:
+            rays (torch.Tensor, [X, 4]): GT Ray
+            std (float, optional): Δd を全データに対して計算して得られる標準偏差.
+
+        Returns:
+            torch.Tensor: [X, 4]
+        """
+        d_l = (1 / std) * rays[:, 0].log()
+        d_r = (1 / std) * rays[:, 1].log()
+        d_t = (1 / std) * rays[:, 2].log()
+        d_b = (1 / std) * rays[:, 3].log()
+
+        dds = torch.stack([d_l, d_r, d_t, d_b], dim=1)
+        return dds
+
+    def _calc_coord(self, locs: torch.Tensor, points: torch.Tensor, std: float = 0.1) -> torch.Tensor:
         """ g を算出する
 
         Args:
             locs (torch.Tensor, [X, 4]): Ray Prediction
             points (torch.Tensor, [X, 4]): Points
+            std (float, optional): Δd を全データに対して計算して得られる標準偏差.
 
         Returns:
             torch.Tensor: [X, 4]
         """
-        b_xmin = points[:, 0] - locs[:, 0]
-        b_ymin = points[:, 1] - locs[:, 1]
-        b_xmax = points[:, 0] + locs[:, 2]
-        b_ymax = points[:, 1] + locs[:, 3]
+        xmin = points[:, 0] - (std * locs[:, 0]).exp()
+        ymin = points[:, 1] - (std * locs[:, 1]).exp()
+        xmax = points[:, 0] + (std * locs[:, 2]).exp()
+        ymax = points[:, 1] + (std * locs[:, 3]).exp()
 
-        bboxes = torch.stack([b_xmin, b_ymin, b_xmax, b_ymax], dim=1).contiguous()
+        bboxes = torch.stack([xmin, ymin, xmax, ymax], dim=1)
         return bboxes
 
     def pre_predict(self, outputs: tuple, conf_thresh: float = 0.01, top_k: int = 200) -> tuple:
@@ -300,7 +318,6 @@ class FCOS(DetectionNet):
                     - 予測クラス : [N, P]
         """
         out_locs, out_confs, out_cents = outputs
-        out_locs = out_locs.exp()
         out_confs = (F.softmax(out_confs, dim=-1) * out_cents.sigmoid()[..., None]).sqrt()
 
         # to CPU
