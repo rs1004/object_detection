@@ -4,17 +4,7 @@ import torch.nn.functional as F
 from itertools import product
 from torchvision.ops import box_convert
 from models.base import DetectionNet
-from models.losses import focal_loss, iou_loss_with_distance
-
-
-class Scale(nn.Module):
-    def __init__(self, init=1.0):
-        super().__init__()
-
-        self.scale = nn.Parameter(torch.tensor([init], dtype=torch.float32))
-
-    def forward(self, input):
-        return input * self.scale
+from models.losses import focal_loss, giou_loss_with_distance
 
 
 class UpAdd(nn.Module):
@@ -90,8 +80,6 @@ class FCOS(DetectionNet):
             nn.Conv2d(fpn_out_channels, 1, kernel_size=3, padding=1)
         )
 
-        self.scales = nn.ModuleList([Scale(1.0) for _ in range(5)])
-
         self.init_weights(blocks=[
             self.p3_1, self.p4_1, self.p5_1, self.p3_2, self.p4_2, self.p5_2,
             self.p6_1, self.p7_1, self.regressor, self.classifier, self.centerness]
@@ -126,7 +114,7 @@ class FCOS(DetectionNet):
         f_k_list = []
         for i, p in enumerate([p3, p4, p5, p6, p7]):
             f_k_list.append(p.size(-1))
-            out_locs.append((self.scales[i](self.regressor(p).permute(0, 2, 3, 1).reshape(batch_size, -1, 4))).exp())
+            out_locs.append((0.1 * self.regressor(p).permute(0, 2, 3, 1).reshape(batch_size, -1, 4)).exp())
             out_confs.append(self.classifier(p).permute(0, 2, 3, 1).reshape(batch_size, -1, self.nc))
             out_cents.append(self.centerness(p).permute(0, 2, 3, 1).reshape(batch_size, -1))
 
@@ -257,7 +245,7 @@ class FCOS(DetectionNet):
         N = pos_mask.sum()
         # [Step 3]
         #   Positive に対して、 Localization Loss を計算する
-        loss_loc = iou_loss_with_distance(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
+        loss_loc = giou_loss_with_distance(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
 
         # [Step 4]
         #   Positive に対して、 Centerness Loss を計算する
