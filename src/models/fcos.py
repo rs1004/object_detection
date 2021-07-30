@@ -87,7 +87,7 @@ class FCOS(DetectionNet):
         self.confs_top = nn.Conv2d(fpn_out_channels, self.nc, kernel_size=3, padding=1)
         self.cents_top = nn.Conv2d(fpn_out_channels, 1, kernel_size=3, padding=1)
 
-        self.scales = nn.ModuleList([Scale(1.0) for _ in range(5)])
+        self.scales = nn.ModuleList([Scale(0.1) for _ in range(5)])
 
         self.init_weights(blocks=[
             self.p3_1, self.p4_1, self.p5_1, self.p3_2, self.p4_2, self.p5_2,
@@ -170,7 +170,7 @@ class FCOS(DetectionNet):
 
         return regress_ranges
 
-    def loss(self, outputs: tuple, gt_bboxes: list, gt_labels: list, iou_threshs: tuple = (0.4, 0.5)) -> dict:
+    def loss(self, outputs: tuple, gt_bboxes: list, gt_labels: list) -> dict:
         """ 損失関数
 
         Args:
@@ -180,7 +180,6 @@ class FCOS(DetectionNet):
                             * 予測信頼度     : (B, P, num_classes + 1)
             gt_bboxes (list): 正解BBOX座標 [(G1, 4), (G2, 4), ...] (coord fmt: [cx, cy, w, h])
             gt_labels (list): 正解ラベル [(G1,), (G2,)]
-            iou_threshs (float): Potitive / Negative を判定する際の iou の閾値
 
         Returns:
             dict: {
@@ -221,12 +220,12 @@ class FCOS(DetectionNet):
 
             # 条件 1
             inside_bbox = rays.min(dim=-1).values > 0
-            areas[~inside_bbox] = 1
+            areas[~inside_bbox] = 10
 
             # 条件 2
             max_ray = rays.max(dim=-1).values
             inside_regress_range = (regress_ranges[:, [0]] <= max_ray) * (max_ray <= regress_ranges[:, [1]])
-            areas[~inside_regress_range] = 1
+            areas[~inside_regress_range] = 10
 
             # 条件 3
             min_areas, matched_bbox_ids = areas.min(dim=1)
@@ -235,7 +234,7 @@ class FCOS(DetectionNet):
                 locs[:, 0:2].min(dim=1).values / locs[:, 0:2].max(dim=1).values * locs[:, 2:4].min(dim=1).values / locs[:, 2:4].max(dim=1).values
             ).sqrt()
             labels = labels[matched_bbox_ids]
-            labels[min_areas == 1] = 0  # 0 が背景クラス. Positive Class は 1 ~
+            labels[min_areas == 10] = 0  # 0 が背景クラス. Positive Class は 1 ~
 
             target_locs[i] = locs
             target_cents[i] = cents
