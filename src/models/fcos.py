@@ -4,7 +4,16 @@ import torch.nn.functional as F
 from itertools import product
 from torchvision.ops import box_convert
 from models.base import DetectionNet
-from models.losses import focal_loss, giou_loss_with_distance
+from models.losses import focal_loss, iou_loss_with_distance
+
+
+class Scale(nn.Module):
+    def __init__(self, scale=1.0):
+        super(Scale, self).__init__()
+        self.scale = nn.Parameter(torch.tensor(scale, dtype=torch.float))
+
+    def forward(self, x):
+        return x * self.scale
 
 
 class UpAdd(nn.Module):
@@ -20,19 +29,17 @@ class UpAdd(nn.Module):
 
 
 class Head(nn.Module):
-    def __init__(self, in_channels, out_channels, num_blocks=4):
+    def __init__(self, in_channels, num_blocks=4):
         super(Head, self).__init__()
         head_list = []
         for _ in range(num_blocks):
-            head_list.append(nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1))
+            head_list.append(nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1, bias=False))
             head_list.append(nn.GroupNorm(32, in_channels))
             head_list.append(nn.ReLU(inplace=True))
         self.headc = nn.Sequential(*head_list)
-        self.outc = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1)
 
     def forward(self, x):
-        x = self.headc(x)
-        out = self.outc(x)
+        out = self.headc(x)
         return out
 
 
@@ -68,21 +75,23 @@ class FCOS(DetectionNet):
         self.p3_2 = nn.Conv2d(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
         self.p4_2 = nn.Conv2d(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
         self.p5_2 = nn.Conv2d(fpn_out_channels, fpn_out_channels, kernel_size=3, padding=1)
-        self.p6_1 = nn.Conv2d(fpn_in_channels[2], fpn_out_channels, kernel_size=3, stride=2, padding=1)
+        self.p6_1 = nn.Conv2d(fpn_out_channels, fpn_out_channels, kernel_size=3, stride=2, padding=1)
         self.p7_1 = nn.Conv2d(fpn_out_channels, fpn_out_channels, kernel_size=3, stride=2, padding=1)
 
         self.relu = nn.ReLU(inplace=True)
 
-        self.regressor = Head(fpn_out_channels, 4)
-        self.classifier = Head(fpn_out_channels, self.nc)
-        self.centerness = nn.Sequential(
-            self.regressor.headc,
-            nn.Conv2d(fpn_out_channels, 1, kernel_size=3, padding=1)
-        )
+        self.regressor = Head(fpn_out_channels)
+        self.classifier = Head(fpn_out_channels)
+
+        self.locs_top = nn.Conv2d(fpn_out_channels, 4, kernel_size=3, padding=1)
+        self.confs_top = nn.Conv2d(fpn_out_channels, self.nc, kernel_size=3, padding=1)
+        self.cents_top = nn.Conv2d(fpn_out_channels, 1, kernel_size=3, padding=1)
+
+        self.scales = nn.ModuleList([Scale(1.0) for _ in range(5)])
 
         self.init_weights(blocks=[
             self.p3_1, self.p4_1, self.p5_1, self.p3_2, self.p4_2, self.p5_2,
-            self.p6_1, self.p7_1, self.regressor, self.classifier, self.centerness]
+            self.p6_1, self.p7_1, self.regressor, self.classifier, self.locs_top, self.confs_top, self.cents_top]
         )
 
     def forward(self, x):
@@ -104,7 +113,7 @@ class FCOS(DetectionNet):
         p3 = self.p3_2(p3)
         p4 = self.p4_2(p4)
         p5 = self.p5_2(p5)
-        p6 = self.p6_1(c5)
+        p6 = self.p6_1(self.relu(p5))
         p7 = self.p7_1(self.relu(p6))
 
         # detection head
@@ -114,9 +123,11 @@ class FCOS(DetectionNet):
         f_k_list = []
         for i, p in enumerate([p3, p4, p5, p6, p7]):
             f_k_list.append(p.size(-1))
-            out_locs.append((0.1 * self.regressor(p).permute(0, 2, 3, 1).reshape(batch_size, -1, 4)).exp())
-            out_confs.append(self.classifier(p).permute(0, 2, 3, 1).reshape(batch_size, -1, self.nc))
-            out_cents.append(self.centerness(p).permute(0, 2, 3, 1).reshape(batch_size, -1))
+            r = self.regressor(p)
+            c = self.classifier(p)
+            out_locs.append(self.scales[i](self.locs_top(r).permute(0, 2, 3, 1).reshape(batch_size, -1, 4)))
+            out_confs.append(self.confs_top(c).permute(0, 2, 3, 1).reshape(batch_size, -1, self.nc))
+            out_cents.append(self.cents_top(c).permute(0, 2, 3, 1).reshape(batch_size, -1))
 
         out_locs = torch.cat(out_locs, dim=1)
         out_confs = torch.cat(out_confs, dim=1)
@@ -153,7 +164,7 @@ class FCOS(DetectionNet):
         for i in range(len(f_k_list)):
             f_k = f_k_list[i]
             low, upp = regress_range_list[i]
-            for y, x in product(range(f_k), repeat=2):
+            for _ in product(range(f_k), repeat=2):
                 regress_ranges.append([low, upp])
         regress_ranges = torch.tensor(regress_ranges)
 
@@ -214,7 +225,7 @@ class FCOS(DetectionNet):
 
             # 条件 2
             max_ray = rays.max(dim=-1).values
-            inside_regress_range = (regress_ranges[:, [0]] < max_ray) * (max_ray < regress_ranges[:, [1]])
+            inside_regress_range = (regress_ranges[:, [0]] <= max_ray) * (max_ray <= regress_ranges[:, [1]])
             areas[~inside_regress_range] = 1
 
             # 条件 3
@@ -243,9 +254,10 @@ class FCOS(DetectionNet):
         neg_mask = target_labels == 0
 
         N = pos_mask.sum()
+        print(pos_mask.sum(), neg_mask.sum())
         # [Step 3]
         #   Positive に対して、 Localization Loss を計算する
-        loss_loc = giou_loss_with_distance(out_locs[pos_mask], target_locs[pos_mask], reduction='sum') / N
+        loss_loc = iou_loss_with_distance(out_locs[pos_mask].exp(), target_locs[pos_mask], reduction='sum') / target_cents[pos_mask].sum()
 
         # [Step 4]
         #   Positive に対して、 Centerness Loss を計算する
@@ -276,10 +288,10 @@ class FCOS(DetectionNet):
         Returns:
             torch.Tensor: [X, 4]
         """
-        xmin = points[:, 0] - locs[:, 0]
-        ymin = points[:, 1] - locs[:, 1]
-        xmax = points[:, 0] + locs[:, 2]
-        ymax = points[:, 1] + locs[:, 3]
+        xmin = points[:, 0] - locs[:, 0].exp()
+        ymin = points[:, 1] - locs[:, 1].exp()
+        xmax = points[:, 0] + locs[:, 2].exp()
+        ymax = points[:, 1] + locs[:, 3].exp()
 
         bboxes = torch.stack([xmin, ymin, xmax, ymax], dim=1)
         return bboxes
