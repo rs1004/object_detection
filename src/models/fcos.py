@@ -254,7 +254,6 @@ class FCOS(DetectionNet):
         neg_mask = target_labels == 0
 
         N = pos_mask.sum()
-        print(pos_mask.sum(), neg_mask.sum())
         # [Step 3]
         #   Positive に対して、 Localization Loss を計算する
         loss_loc = iou_loss_with_distance(out_locs[pos_mask].exp(), target_locs[pos_mask], reduction='sum') / target_cents[pos_mask].sum()
