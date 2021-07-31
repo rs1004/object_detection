@@ -62,7 +62,8 @@ for phase in ['train', 'val']:
         data_dir=cfg.data['data_dir'],
         pipeline=cfg.data[f'{phase}_pipeline'],
         fmt=cfg.data['bbox_fmt'],
-        phase=phase
+        phase=phase,
+        norm=cfg.data.get('norm', True)
     )
 
     dataloaders[phase] = DataLoader(

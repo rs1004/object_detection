@@ -6,6 +6,8 @@ from torchvision.ops import box_convert
 from models.base import DetectionNet
 from models.losses import focal_loss, iou_loss_with_distance
 
+INF = 1e8
+
 
 class Scale(nn.Module):
     def __init__(self, scale=1.0):
@@ -87,7 +89,7 @@ class FCOS(DetectionNet):
         self.confs_top = nn.Conv2d(fpn_out_channels, self.nc, kernel_size=3, padding=1)
         self.cents_top = nn.Conv2d(fpn_out_channels, 1, kernel_size=3, padding=1)
 
-        self.scales = nn.ModuleList([Scale(0.1) for _ in range(5)])
+        self.scales = nn.ModuleList([Scale(1.0) for _ in range(5)])
 
         self.init_weights(blocks=[
             self.p3_1, self.p4_1, self.p5_1, self.p3_2, self.p4_2, self.p5_2,
@@ -147,7 +149,7 @@ class FCOS(DetectionNet):
         for i in range(len(f_k_list)):
             f_k = f_k_list[i]
             for y, x in product(range(f_k), repeat=2):
-                points.append([(x + 0.5) / f_k, (y + 0.5) / f_k])
+                points.append([(x + 0.5) / f_k * 512, (y + 0.5) / f_k * 512])
         points = torch.tensor(points)
 
         return points
@@ -158,7 +160,7 @@ class FCOS(DetectionNet):
         Returns:
             torch.Tensor (5456, 2): Regress Ranges
         """
-        regress_range_list = [[-1, 0.125], [0.125, 0.25], [0.25, 0.5], [0.5, 1.], [1., 1e6]]
+        regress_range_list = [[-1, 64], [64, 128], [128, 256], [256, 512], [512, INF]]
 
         regress_ranges = []
         for i in range(len(f_k_list)):
@@ -220,12 +222,12 @@ class FCOS(DetectionNet):
 
             # 条件 1
             inside_bbox = rays.min(dim=-1).values > 0
-            areas[~inside_bbox] = 10
+            areas[~inside_bbox] = INF
 
             # 条件 2
             max_ray = rays.max(dim=-1).values
             inside_regress_range = (regress_ranges[:, [0]] <= max_ray) * (max_ray <= regress_ranges[:, [1]])
-            areas[~inside_regress_range] = 10
+            areas[~inside_regress_range] = INF
 
             # 条件 3
             min_areas, matched_bbox_ids = areas.min(dim=1)
@@ -234,7 +236,7 @@ class FCOS(DetectionNet):
                 locs[:, 0:2].min(dim=1).values / locs[:, 0:2].max(dim=1).values * locs[:, 2:4].min(dim=1).values / locs[:, 2:4].max(dim=1).values
             ).sqrt()
             labels = labels[matched_bbox_ids]
-            labels[min_areas == 10] = 0  # 0 が背景クラス. Positive Class は 1 ~
+            labels[min_areas == INF] = 0  # 0 が背景クラス. Positive Class は 1 ~
 
             target_locs[i] = locs
             target_cents[i] = cents

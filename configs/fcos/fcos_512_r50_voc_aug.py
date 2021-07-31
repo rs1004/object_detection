@@ -18,6 +18,7 @@ __std = [0.229, 0.224, 0.225]
 data = dict(
     data_dir=__data_dir,
     bbox_fmt='cxcywh',
+    norm=False,
     train_pipeline=dict(
         albu=[
             dict(type='ToFloat32'),

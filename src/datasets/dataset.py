@@ -23,11 +23,12 @@ class DetectionDataset(Dataset):
                                           label      : torch.tensor (k,)
     """
 
-    def __init__(self, data_dir: str, pipeline: dict, fmt: str = 'cxcywh', phase: str = 'train'):
+    def __init__(self, data_dir: str, pipeline: dict, fmt: str = 'cxcywh', phase: str = 'train', norm: bool = True):
         super(DetectionDataset, self).__init__()
         self.classes = None
         self.data_list = self._get_data_list(data_dir, phase)
         self.fmt = fmt
+        self.norm = norm
         self.transform = Pipeline(pipeline)
 
     def __len__(self):
@@ -56,7 +57,8 @@ class DetectionDataset(Dataset):
         # transform
         image, image_meta, bboxes, labels = self.transform(image=image, image_meta=image_meta, bboxes=bboxes, labels=labels)
         bboxes = box_convert(torch.tensor(bboxes), in_fmt='xywh', out_fmt=self.fmt)
-        bboxes = bboxes.div(image.size(-1)).float()
+        if self.norm:
+            bboxes = bboxes.div(image.size(-1)).float()
         labels = torch.tensor(labels)
 
         return image, image_meta, bboxes, labels
